@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+https://go.microsoft.com/fwlink/?LinkID=208121.
+-->
+<Project>
+  <PropertyGroup>
+    <_PublishTargetUrl>D:\TestProJects\AppDrive\BackEnd\src\Services\Queries\MyDrive.Query.Api\bin\Release\net8.0\publish\</_PublishTargetUrl>
+    <History>True|2024-08-13T10:58:15.7387712Z;True|2024-08-13T17:35:22.8415272+07:00;True|2024-08-13T17:34:47.7795325+07:00;True|2024-08-13T17:00:25.9697454+07:00;True|2024-08-13T16:58:28.1330773+07:00;True|2024-08-13T16:57:39.6206335+07:00;True|2024-08-13T16:42:47.0587278+07:00;</History>
+    <LastFailureDetails />
+  </PropertyGroup>
+</Project>
