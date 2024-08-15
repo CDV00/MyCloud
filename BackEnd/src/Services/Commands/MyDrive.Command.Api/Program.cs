@@ -10,18 +10,18 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Add configuration
+//Add services to the container.
+//Add configuration
 
-//Log.Logger = new LoggerConfiguration().ReadFrom
-//    .Configuration(builder.Configuration)
-//    .CreateLogger();
+Log.Logger = new LoggerConfiguration().ReadFrom
+    .Configuration(builder.Configuration)
+    .CreateLogger();
 
-//builder.Logging
-//    .ClearProviders()
-//    .AddSerilog();
+builder.Logging
+    .ClearProviders()
+    .AddSerilog();
 
-//builder.Host.UseSerilog();
+builder.Host.UseSerilog();
 
 //Add configure cors
 builder.Services.AddCors(p => p.AddPolicy("MyDrive.Command", build =>
