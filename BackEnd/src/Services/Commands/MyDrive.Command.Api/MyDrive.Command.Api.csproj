@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Asp.Versioning.Http" Version="8.1.0" />
+    <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="8.1.0" />
+    <PackageReference Include="Carter" Version="8.1.0" />
+    <PackageReference Include="MicroElements.Swashbuckle.FluentValidation" Version="6.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.7" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.7">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.2" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.7.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.Newtonsoft" Version="6.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Upload\Files\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuidingBlocks\MyDriver.BuildBlock.FTP\MyDriver.BuildBlock.FTP.csproj" />
+    <ProjectReference Include="..\MyDrive.Command.Application\MyDrive.Command.Application.csproj" />
+    <ProjectReference Include="..\MyDrive.Command.Domain\MyDrive.Command.Domain.csproj" />
+    <ProjectReference Include="..\MyDrive.Command.Infrastructure\MyDrive.Command.Infrastructure.csproj" />
+    <ProjectReference Include="..\MyDrive.Command.Persistence\MyDrive.Command.Persistence.csproj" />
+    <ProjectReference Include="..\MyDrive.Command.Presentation\MyDrive.Command.Presentation.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,8 +1,6 @@
 ﻿using MyDrive.BuidingBlock.Contract.Abstractions.Messages;
 using MyDrive.BuidingBlock.Contract.Abstractions.Shared;
-using MyDrive.BuidingBlock.Contract.Services.V1.File;
 using MyDrive.Command.Domain.Abstractions.Repositories;
-using MyDrive.Command.Domain.Exceptions;
 
 namespace MyDrive.Command.Application.UserCases.V1.Commands.File;
 

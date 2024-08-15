@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Asp.Versioning.Http" Version="8.1.0" />
+    <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="8.1.0" />
+    <PackageReference Include="Carter" Version="8.1.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.3" />
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.2" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.Newtonsoft" Version="6.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MyDrive.Query.Application\MyDrive.Query.Application.csproj" />
+    <ProjectReference Include="..\MyDrive.Query.Domain\MyDrive.Query.Domain.csproj" />
+    <ProjectReference Include="..\MyDrive.Query.Infrastructure\MyDrive.Query.Infrastructure.csproj" />
+    <ProjectReference Include="..\MyDrive.Query.Persistence\MyDrive.Query.Persistence.csproj" />
+    <ProjectReference Include="..\MyDrive.Query.Presentation\MyDrive.Query.Presentation.csproj" />
+  </ItemGroup>
+
+</Project>

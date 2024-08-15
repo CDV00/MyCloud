@@ -3,11 +3,8 @@
 /FrontEnd/my-drive/public
 *.dll
 **/.vshistory/*
-*.csproj
 **/obj/*
 **/bin/*
 **/.vs
 **/logs
 **/Upload/Files
-**/appsettings.json
-**/appsettings.Development.json

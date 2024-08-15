@@ -17,7 +17,7 @@ public sealed class CreateFileCommandHandler : ICommandHandler<BuidingBlock.Cont
 
     public async Task<Result> Handle(BuidingBlock.Contract.Services.V1.File.Command.CreateFileCommand request, CancellationToken cancellationToken)
     {
-        string storedName = await FileService.WriteFile(request.FileString, request.Name, request.type);
+        string storedName = "";
         var file = Domain.Entities.File.CreateFile(Guid.NewGuid(), request.Name, storedName, request.type, request.size, request.description, request.FolderId);
         _fileRepository.Add(file);
 

@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuidingBlocks\MyDrive.BuidingBlock.Contract\MyDrive.BuidingBlock.Contract.csproj" />
+    <ProjectReference Include="..\MyDrive.Query.Domain\MyDrive.Query.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

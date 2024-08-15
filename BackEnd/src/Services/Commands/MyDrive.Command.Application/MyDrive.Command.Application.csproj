@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AutoMapper" Version="13.0.1" />
+    <PackageReference Include="FluentValidation" Version="11.9.2" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.9.2" />
+    <PackageReference Include="MediatR" Version="12.4.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuidingBlocks\MyDrive.BuidingBlock.Contract\MyDrive.BuidingBlock.Contract.csproj" />
+    <ProjectReference Include="..\..\..\BuidingBlocks\MyDriver.BuildBlock.FTP\MyDriver.BuildBlock.FTP.csproj" />
+    <ProjectReference Include="..\MyDrive.Command.Domain\MyDrive.Command.Domain.csproj" />
+    <ProjectReference Include="..\MyDrive.Command.Persistence\MyDrive.Command.Persistence.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="DependencyInjection\Options\" />
+    <Folder Include="Abstractions\" />
+    <Folder Include="UserCases\V1\Queries\" />
+  </ItemGroup>
+
+</Project>

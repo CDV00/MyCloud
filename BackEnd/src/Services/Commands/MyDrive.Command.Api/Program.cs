@@ -6,7 +6,6 @@ using MyDrive.Command.Persistence.DependencyInjection.Extensions;
 using MyDrive.Command.Persistence.DependencyInjection.Options;
 using MicroElements.Swashbuckle.FluentValidation.AspNetCore;
 using MyDrive.Command.Infrastructure.DependencyInjection.Extensions;
-//using MyDrive.Command.Infrastructure.DependencyInjection.Extensions;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,15 +13,15 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 // Add configuration
 
-Log.Logger = new LoggerConfiguration().ReadFrom
-    .Configuration(builder.Configuration)
-    .CreateLogger();
+//Log.Logger = new LoggerConfiguration().ReadFrom
+//    .Configuration(builder.Configuration)
+//    .CreateLogger();
 
-builder.Logging
-    .ClearProviders()
-    .AddSerilog();
+//builder.Logging
+//    .ClearProviders()
+//    .AddSerilog();
 
-builder.Host.UseSerilog();
+//builder.Host.UseSerilog();
 
 //Add configure cors
 builder.Services.AddCors(p => p.AddPolicy("MyDrive.Command", build =>
@@ -89,18 +88,18 @@ if (builder.Environment.IsDevelopment() || builder.Environment.IsStaging())
 
 try
 {
-await app.RunAsync();
-Log.Information("Stopped cleanly");
+    await app.RunAsync();
+    Log.Information("Stopped cleanly");
 }
 catch (Exception ex)
 {
-Log.Fatal(ex, "An unhandled exception occured during bootstrapping");
-await app.StopAsync();
+    Log.Fatal(ex, "An unhandled exception occured during bootstrapping");
+    await app.StopAsync();
 }
 finally
 {
-Log.CloseAndFlush();
-await app.DisposeAsync();
+    Log.CloseAndFlush();
+    await app.DisposeAsync();
 }
 
 public partial class Program { }
