@@ -8,25 +8,25 @@ namespace MyDrive.Query.Infrastructure.Consumer;
 
 public static class FolderConsumer
 {
-    public class ProductCreatedConsumer : Consumer<DomainEvent.FolderCreated>
+    public class FolderCreatedConsumer : Consumer<DomainEvent.FolderCreated>
     {
-        public ProductCreatedConsumer(ISender sender, IMongoRepository<EventProjection> eventRepository)
+        public FolderCreatedConsumer(ISender sender, IMongoRepository<EventProjection> eventRepository)
             : base(sender, eventRepository)
         {
         }
     }
 
-    public class ProductDeletedConsumer : Consumer<DomainEvent.FolderDeleted>
+    public class FolderDeletedConsumer : Consumer<DomainEvent.FolderDeleted>
     {
-        public ProductDeletedConsumer(ISender sender, IMongoRepository<EventProjection> eventRepository)
+        public FolderDeletedConsumer(ISender sender, IMongoRepository<EventProjection> eventRepository)
             : base(sender, eventRepository)
         {
         }
     }
 
-    public class ProductUpdatedConsumer : Consumer<DomainEvent.FolderUpdated>
+    public class FolderUpdatedConsumer : Consumer<DomainEvent.FolderUpdated>
     {
-        public ProductUpdatedConsumer(ISender sender, IMongoRepository<EventProjection> eventRepository)
+        public FolderUpdatedConsumer(ISender sender, IMongoRepository<EventProjection> eventRepository)
             : base(sender, eventRepository)
         {
         }

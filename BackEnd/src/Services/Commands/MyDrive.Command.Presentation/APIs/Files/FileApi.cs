@@ -26,8 +26,6 @@ public class FileApi : ApiEndpoint, ICarterModule
 
     #region ====== version 1 ======
 
-
-
     public static async Task<IResult> UploadFile(ISender sender, Guid folderId, IFormFile file )
     {
         CommandV1.Command.CreateFile2Command CreateFolder = new CommandV1.Command.CreateFile2Command(folderId, file);
