@@ -119,7 +119,7 @@ public static class ServiceCollectionExtensions
                         trigger.ForJob(jobKey)
                             .WithSimpleSchedule(
                                 schedule =>
-                                    schedule.WithInterval(TimeSpan.FromMicroseconds(1000))
+                                    schedule.WithInterval(TimeSpan.FromMicroseconds(100))
                                         .RepeatForever()));
 
             configure.UseMicrosoftDependencyInjectionJobFactory();
