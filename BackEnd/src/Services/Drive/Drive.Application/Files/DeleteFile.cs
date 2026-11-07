@@ -15,11 +15,12 @@ internal sealed class DeleteFileCommandHandler(
     IFileRepository files,
     IFileContentStore contentStore,
     IUnitOfWork unitOfWork,
+    ICurrentUser currentUser,
     ILogger<DeleteFileCommandHandler> logger) : ICommandHandler<DeleteFileCommand>
 {
     public async Task<Result> Handle(DeleteFileCommand request, CancellationToken cancellationToken)
     {
-        DriveFile file = await files.FindByIdAsync(request.Id, cancellationToken)
+        DriveFile file = await files.FindOwnedAsync(request.Id, currentUser.GetRequiredUserId(), cancellationToken)
             ?? throw new FileException.NotFound(request.Id);
 
         file.Delete();

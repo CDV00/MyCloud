@@ -29,6 +29,9 @@ public sealed class File : AggregateRoot<Guid>, IAuditableEntity
 
     public Guid FolderId { get; private set; }
 
+    /// <summary>Chủ sở hữu — luôn trùng chủ sở hữu của thư mục chứa file.</summary>
+    public Guid OwnerId { get; private set; }
+
     public DateTimeOffset CreatedOnUtc { get; set; }
 
     public Guid CreatedBy { get; set; }
@@ -37,8 +40,21 @@ public sealed class File : AggregateRoot<Guid>, IAuditableEntity
 
     public Guid? ModifiedBy { get; set; }
 
-    public static File Create(Guid id, string name, string storageKey, string contentType, long sizeBytes, string? description, Guid folderId)
+    public static File Create(
+        Guid id,
+        Guid ownerId,
+        string name,
+        string storageKey,
+        string contentType,
+        long sizeBytes,
+        string? description,
+        Guid folderId)
     {
+        if (ownerId == Guid.Empty)
+        {
+            throw new ArgumentException("A file must have an owner.", nameof(ownerId));
+        }
+
         if (string.IsNullOrWhiteSpace(storageKey))
         {
             throw new FileException.MissingContent(id);
@@ -52,6 +68,7 @@ public sealed class File : AggregateRoot<Guid>, IAuditableEntity
         var file = new File
         {
             Id = id,
+            OwnerId = ownerId,
             Name = ValidateName(name),
             StorageKey = storageKey,
             ContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType,

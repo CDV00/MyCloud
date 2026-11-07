@@ -17,6 +17,8 @@ public sealed class FolderDocument
 
     public Guid? ParentId { get; set; }
 
+    public Guid OwnerId { get; set; }
+
     /// <summary>Thời điểm của event mới nhất đã áp dụng — dùng để bỏ qua event đến muộn/sai thứ tự.</summary>
     public DateTimeOffset UpdatedAt { get; set; }
 }
@@ -36,6 +38,8 @@ public sealed class FileDocument
 
     public Guid FolderId { get; set; }
 
+    public Guid OwnerId { get; set; }
+
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
@@ -54,11 +58,12 @@ public sealed class SearchDb(IMongoDatabase database)
 
     public async Task EnsureIndexesAsync(CancellationToken cancellationToken = default)
     {
+        // Mọi truy vấn đều lọc theo chủ sở hữu trước.
         await Folders.Indexes.CreateOneAsync(
-            new CreateIndexModel<FolderDocument>(Builders<FolderDocument>.IndexKeys.Ascending(x => x.ParentId)),
+            new CreateIndexModel<FolderDocument>(Builders<FolderDocument>.IndexKeys.Ascending(x => x.OwnerId).Ascending(x => x.ParentId)),
             cancellationToken: cancellationToken);
         await Files.Indexes.CreateOneAsync(
-            new CreateIndexModel<FileDocument>(Builders<FileDocument>.IndexKeys.Ascending(x => x.FolderId)),
+            new CreateIndexModel<FileDocument>(Builders<FileDocument>.IndexKeys.Ascending(x => x.OwnerId).Ascending(x => x.FolderId)),
             cancellationToken: cancellationToken);
     }
 }

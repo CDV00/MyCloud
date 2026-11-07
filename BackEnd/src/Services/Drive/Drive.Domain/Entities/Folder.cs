@@ -22,6 +22,9 @@ public sealed class Folder : AggregateRoot<Guid>, IAuditableEntity
 
     public Guid? ParentId { get; private set; }
 
+    /// <summary>Chủ sở hữu. Phase 1–3 chỉ chủ sở hữu được truy cập; Phase 4 thêm quyền chia sẻ (Sharing service).</summary>
+    public Guid OwnerId { get; private set; }
+
     public DateTimeOffset CreatedOnUtc { get; set; }
 
     public Guid CreatedBy { get; set; }
@@ -30,11 +33,17 @@ public sealed class Folder : AggregateRoot<Guid>, IAuditableEntity
 
     public Guid? ModifiedBy { get; set; }
 
-    public static Folder Create(Guid id, string name, string? description, Guid? parentId)
+    public static Folder Create(Guid id, Guid ownerId, string name, string? description, Guid? parentId)
     {
+        if (ownerId == Guid.Empty)
+        {
+            throw new ArgumentException("A folder must have an owner.", nameof(ownerId));
+        }
+
         var folder = new Folder
         {
             Id = id,
+            OwnerId = ownerId,
             Name = ValidateName(name),
             Description = description?.Trim() ?? string.Empty,
             ParentId = parentId,

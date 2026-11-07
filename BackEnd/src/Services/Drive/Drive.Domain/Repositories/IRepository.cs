@@ -13,11 +13,19 @@ public interface IRepository<TAggregate, in TKey>
     void Remove(TAggregate aggregate);
 }
 
+/// <summary>
+/// Truy vấn theo chủ sở hữu: item của người khác được coi như không tồn tại (404, không phải 403) để không lộ id hợp lệ.
+/// </summary>
 public interface IFolderRepository : IRepository<Entities.Folder, Guid>
 {
-    Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<Entities.Folder?> FindOwnedAsync(Guid id, Guid ownerId, CancellationToken cancellationToken = default);
+
+    Task<bool> ExistsOwnedAsync(Guid id, Guid ownerId, CancellationToken cancellationToken = default);
 
     Task<bool> HasChildrenAsync(Guid id, CancellationToken cancellationToken = default);
 }
 
-public interface IFileRepository : IRepository<Entities.File, Guid>;
+public interface IFileRepository : IRepository<Entities.File, Guid>
+{
+    Task<Entities.File?> FindOwnedAsync(Guid id, Guid ownerId, CancellationToken cancellationToken = default);
+}

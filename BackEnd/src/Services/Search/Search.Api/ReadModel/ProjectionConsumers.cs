@@ -37,26 +37,41 @@ internal static class Upsert
 public sealed class FolderProjectionConsumer(SearchDb db)
     : IConsumer<FolderCreated>, IConsumer<FolderUpdated>, IConsumer<FolderDeleted>
 {
-    public Task Consume(ConsumeContext<FolderCreated> context) =>
-        Save(context.Message.FolderId, context.Message.Name, context.Message.Description, context.Message.ParentId,
-            context.Message.OccurredAt, context.CancellationToken);
+    public Task Consume(ConsumeContext<FolderCreated> context)
+    {
+        FolderCreated e = context.Message;
+        return Save(new FolderDocument
+        {
+            Id = e.FolderId,
+            OwnerId = e.OwnerId,
+            Name = e.Name,
+            Description = e.Description,
+            ParentId = e.ParentId,
+            UpdatedAt = e.OccurredAt,
+        }, context.CancellationToken);
+    }
 
-    public Task Consume(ConsumeContext<FolderUpdated> context) =>
-        Save(context.Message.FolderId, context.Message.Name, context.Message.Description, context.Message.ParentId,
-            context.Message.OccurredAt, context.CancellationToken);
+    public Task Consume(ConsumeContext<FolderUpdated> context)
+    {
+        FolderUpdated e = context.Message;
+        return Save(new FolderDocument
+        {
+            Id = e.FolderId,
+            OwnerId = e.OwnerId,
+            Name = e.Name,
+            Description = e.Description,
+            ParentId = e.ParentId,
+            UpdatedAt = e.OccurredAt,
+        }, context.CancellationToken);
+    }
 
     public Task Consume(ConsumeContext<FolderDeleted> context) =>
         db.Folders.DeleteOneAsync(x => x.Id == context.Message.FolderId, context.CancellationToken);
 
-    private Task Save(Guid id, string name, string description, Guid? parentId, DateTimeOffset occurredAt, CancellationToken ct)
+    private Task Save(FolderDocument document, CancellationToken ct)
     {
         var f = Builders<FolderDocument>.Filter;
-        return Upsert.IfNewerAsync(
-            db.Folders,
-            f.Eq(x => x.Id, id),
-            f.Lt(x => x.UpdatedAt, occurredAt),
-            new FolderDocument { Id = id, Name = name, Description = description, ParentId = parentId, UpdatedAt = occurredAt },
-            ct);
+        return Upsert.IfNewerAsync(db.Folders, f.Eq(x => x.Id, document.Id), f.Lt(x => x.UpdatedAt, document.UpdatedAt), document, ct);
     }
 }
 
@@ -69,6 +84,7 @@ public sealed class FileProjectionConsumer(SearchDb db)
         return Save(new FileDocument
         {
             Id = e.FileId,
+            OwnerId = e.OwnerId,
             Name = e.Name,
             ContentType = e.ContentType,
             SizeBytes = e.SizeBytes,
@@ -85,6 +101,7 @@ public sealed class FileProjectionConsumer(SearchDb db)
         return Save(new FileDocument
         {
             Id = e.FileId,
+            OwnerId = e.OwnerId,
             Name = e.Name,
             ContentType = e.ContentType,
             SizeBytes = e.SizeBytes,

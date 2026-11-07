@@ -23,5 +23,6 @@ internal sealed class FileConfiguration : IEntityTypeConfiguration<DriveFile>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(x => x.FolderId);
+        builder.HasIndex(x => new { x.OwnerId, x.FolderId });
     }
 }

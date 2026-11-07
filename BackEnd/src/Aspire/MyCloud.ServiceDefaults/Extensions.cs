@@ -79,11 +79,12 @@ public static class Extensions
     /// </summary>
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
-        app.MapHealthChecks(HealthEndpointPath);
+        // Health check luôn công khai (probe của Kubernetes/Aspire không có token); không trả chi tiết lỗi.
+        app.MapHealthChecks(HealthEndpointPath).AllowAnonymous();
         app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
         {
             Predicate = r => r.Tags.Contains(LiveTag),
-        });
+        }).AllowAnonymous();
 
         return app;
     }

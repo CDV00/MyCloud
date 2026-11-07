@@ -135,3 +135,23 @@ Mỗi quyết định ghi: bối cảnh → quyết định → hệ quả. Tr�
 - Đầu Phase 2 đánh giá lựa chọn lâu dài cho self-host: MinIO (build từ source / bản Chainguard), **SeaweedFS**, **Garage**, RustFS; production trên cloud có thể dùng thẳng AWS S3 / Cloudflare R2. Tiêu chí: hỗ trợ multipart + presigned URL + CORS, license, bản phát hành đều đặn.
 
 **Hệ quả**: + Không khoá vào một nhà cung cấp; Phase 0 vẫn chạy được. − Digest phải cập nhật thủ công khi có bản vá bảo mật cho tới khi chốt lựa chọn.
+
+---
+
+<a id="adr-012"></a>
+## ADR-012 — Phát hành và lưu token cho web app
+
+**Trạng thái**: Accepted (Phase 1).
+
+**Bối cảnh**: SPA cần giữ phiên đăng nhập qua các lần tải trang mà không để XSS lấy được token dùng lâu dài. Bản cũ lưu chuỗi giả vào `localStorage`. Phase 0 ký JWT bằng HMAC với bí mật dùng chung: service nào validate được token thì cũng **phát hành** được token.
+
+**Quyết định**:
+- **RS256**: chỉ Identity giữ private key; Gateway/service tải public key từ `/.well-known/jwks.json` (qua discovery document) và tự validate.
+- **Khoá ký** lưu DB (`signing_keys`), private key mã hoá bằng ASP.NET Core Data Protection (key ring cũng trong DB; production bảo vệ key ring bằng certificate / Key Vault). Xoay vòng tự động: khoá mới được công bố trong JWKS **2 giờ trước** khi dùng để ký (service tải lại JWKS mỗi giờ), khoá cũ còn trong JWKS thêm 1 ngày. Nhiều instance Identity phối hợp bằng PostgreSQL advisory lock.
+- **Access token** (15 phút) trả trong body; SPA chỉ giữ trong bộ nhớ.
+- **Refresh token** (30 ngày, xoay vòng mỗi lần dùng, phát hiện dùng lại) nằm trong cookie `HttpOnly; SameSite=Strict`, `Path` chỉ là đường dẫn auth. Client không phải trình duyệt gửi `refreshTokenInBody: true` để nhận trong body.
+- **SPA và API cùng origin**: dev dùng Vite proxy `/api` → Gateway; production đặt SPA và Gateway sau cùng một domain. Không cần CORS cho web app, cookie `SameSite=Strict` hoạt động, và `/auth/refresh` bắt buộc body JSON nên form của site khác không gọi được.
+
+**Phương án đã loại**: lưu token trong `localStorage` (XSS đọc được token dài hạn); BFF giữ token phía server (an toàn hơn nữa nhưng thêm một thành phần có trạng thái — xem lại nếu làm đăng nhập Google/OIDC).
+
+**Hệ quả**: + Token lộ qua XSS chỉ sống tối đa 15 phút; refresh token bị đánh cắp rồi dùng lại sẽ bị phát hiện. + Thay Identity bằng Keycloak sau này không đổi Gateway/service (chuẩn JWKS). − Đổi mật khẩu thu hồi refresh token ngay nhưng access token đã phát hành còn hiệu lực tới khi hết hạn (≤ 15 phút). − Mất key ring của Data Protection ⇒ khoá ký cũ không đọc được, hệ thống tự tạo khoá mới và mọi người phải đăng nhập lại.

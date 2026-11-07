@@ -2,6 +2,7 @@ using Drive.Application.Abstractions;
 using Drive.Domain.Exceptions;
 using Drive.Domain.Repositories;
 using FluentValidation;
+using MyCloud.BuildingBlocks.Application.Abstractions;
 using MyCloud.BuildingBlocks.Application.Messaging;
 using MyCloud.BuildingBlocks.Domain.Results;
 using DriveFile = Drive.Domain.Entities.File;
@@ -30,12 +31,16 @@ internal sealed class UploadFileCommandValidator : AbstractValidator<UploadFileC
     }
 }
 
-internal sealed class UploadFileCommandHandler(IFolderRepository folders, IFileRepository files, IFileContentStore contentStore)
-    : ICommandHandler<UploadFileCommand, Guid>
+internal sealed class UploadFileCommandHandler(
+    IFolderRepository folders,
+    IFileRepository files,
+    IFileContentStore contentStore,
+    ICurrentUser currentUser) : ICommandHandler<UploadFileCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(UploadFileCommand request, CancellationToken cancellationToken)
     {
-        if (!await folders.ExistsAsync(request.FolderId, cancellationToken))
+        Guid ownerId = currentUser.GetRequiredUserId();
+        if (!await folders.ExistsOwnedAsync(request.FolderId, ownerId, cancellationToken))
         {
             throw new FolderException.NotFound(request.FolderId);
         }
@@ -46,6 +51,7 @@ internal sealed class UploadFileCommandHandler(IFolderRepository folders, IFileR
 
         var file = DriveFile.Create(
             Guid.CreateVersion7(),
+            ownerId,
             Path.GetFileName(request.FileName),
             storageKey,
             request.ContentType,

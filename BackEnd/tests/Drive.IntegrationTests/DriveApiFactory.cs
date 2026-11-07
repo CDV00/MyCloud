@@ -1,7 +1,9 @@
 using MassTransit;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
 
 namespace Drive.IntegrationTests;
@@ -36,6 +38,17 @@ public sealed class DriveApiFactory : WebApplicationFactory<Program>, IAsyncLife
         builder.UseSetting("ConnectionStrings:rabbitmq", "amqp://guest:guest@localhost:5672");
         builder.UseSetting("FileStorage:RootPath", ContentRoot);
 
-        builder.ConfigureTestServices(services => services.AddMassTransitTestHarness());
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddMassTransitTestHarness();
+
+            // Không có Identity trong test: tin khoá của TestJwt thay vì tải JWKS qua HTTP.
+            // Configure (đăng ký sau Program) chạy trước PostConfigure của JwtBearer ⇒ không tạo ConfigurationManager.
+            services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, o =>
+            {
+                o.MetadataAddress = null!;
+                o.TokenValidationParameters.IssuerSigningKey = TestJwt.Key;
+            });
+        });
     }
 }

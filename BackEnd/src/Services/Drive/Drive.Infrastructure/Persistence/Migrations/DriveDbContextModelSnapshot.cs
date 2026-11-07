@@ -66,6 +66,10 @@ namespace Drive.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("name");
 
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint")
                         .HasColumnName("size_bytes");
@@ -81,6 +85,9 @@ namespace Drive.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("FolderId")
                         .HasDatabaseName("ix_files_folder_id");
+
+                    b.HasIndex("OwnerId", "FolderId")
+                        .HasDatabaseName("ix_files_owner_id_folder_id");
 
                     b.ToTable("files", (string)null);
                 });
@@ -119,6 +126,10 @@ namespace Drive.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("name");
 
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
                     b.Property<Guid?>("ParentId")
                         .HasColumnType("uuid")
                         .HasColumnName("parent_id");
@@ -128,6 +139,9 @@ namespace Drive.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ParentId")
                         .HasDatabaseName("ix_folders_parent_id");
+
+                    b.HasIndex("OwnerId", "ParentId")
+                        .HasDatabaseName("ix_folders_owner_id_parent_id");
 
                     b.ToTable("folders", (string)null);
                 });
