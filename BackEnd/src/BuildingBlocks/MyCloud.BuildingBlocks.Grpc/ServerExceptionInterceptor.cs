@@ -32,14 +32,26 @@ public sealed class ServerExceptionInterceptor(ILogger<ServerExceptionIntercepto
             return new RpcException(new Status(code, "An internal error occurred."));
         }
 
-        return new RpcException(new Status(code, exception.Message));
+        // Mã lỗi ổn định (vd STORAGE.QUOTA_EXCEEDED) đi kèm trong trailer để phía gọi chuyển tiếp cho client.
+        var trailers = new Metadata();
+        if (exception is DomainException { Code: { } errorCode })
+        {
+            trailers.Add(ErrorCodeTrailer, errorCode);
+        }
+
+        return new RpcException(new Status(code, exception.Message), trailers);
     }
+
+    /// <summary>Tên trailer chứa mã lỗi nghiệp vụ.</summary>
+    public const string ErrorCodeTrailer = "x-error-code";
 
     public static StatusCode MapStatusCode(Exception exception) => exception switch
     {
         NotFoundException => StatusCode.NotFound,
         BadRequestException => StatusCode.InvalidArgument,
         ConflictException => StatusCode.FailedPrecondition,
+        PreconditionFailedException => StatusCode.Aborted,
+        LimitExceededException => StatusCode.ResourceExhausted,
         UnauthorizedAccessException => StatusCode.PermissionDenied,
         OperationCanceledException => StatusCode.Cancelled,
         _ => StatusCode.Internal,

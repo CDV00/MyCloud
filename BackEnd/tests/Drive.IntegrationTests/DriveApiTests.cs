@@ -1,34 +1,288 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text;
+using System.Text.Json;
 using MassTransit.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using MyCloud.Contracts.Events.Drive;
+using MyCloud.Testing;
 
 namespace Drive.IntegrationTests;
 
 public sealed class DriveApiTests(DriveApiFactory factory) : IClassFixture<DriveApiFactory>
 {
-    private sealed record CreatedResponse(Guid Id);
+    private sealed record Item(Guid Id, Guid? ParentId, string Kind, string Name, string? MimeType, long SizeBytes, bool IsRoot, long Revision);
 
-    private readonly Guid _userId = Guid.NewGuid();
-    private readonly HttpClient _client = factory.CreateClient();
+    private sealed record Page(Item[] Items, string? NextPageToken);
 
-    private HttpClient Client => _client.DefaultRequestHeaders.Authorization is null ? _client.AsUser(_userId) : _client;
+    private sealed record Upload(Guid UploadId, long PartSize, int PartCount, Part[] Parts);
+
+    private sealed record Part(int PartNumber, string Url);
+
+    private sealed record Link(string Url, DateTimeOffset ExpiresAt);
 
     private ITestHarness Harness => factory.Services.GetRequiredService<ITestHarness>();
 
+    // Mỗi test dùng một người dùng mới ⇒ dữ liệu không lẫn nhau dù chung database.
+    private HttpClient NewUser() => factory.CreateClient().AsUser(Guid.NewGuid());
+
     [Fact]
-    public async Task CreateFolder_Returns201_AndPublishesFolderCreatedThroughOutbox()
+    public async Task Root_IsCreatedOnce_PerUser()
     {
-        var response = await Client.PostAsJsonAsync("/api/v1/folders", new { name = "Tài liệu", description = "Thư mục test" });
+        using HttpClient client = NewUser();
+
+        Item first = await GetRootAsync(client);
+        Item second = await GetRootAsync(client);
+
+        first.IsRoot.ShouldBeTrue();
+        first.Kind.ShouldBe("folder");
+        second.Id.ShouldBe(first.Id);
+    }
+
+    [Fact]
+    public async Task CreateFolder_Returns201WithETag_AndPublishesItemCreated()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+
+        var response = await client.PostAsJsonAsync("/api/v1/folders", new { parentId = root.Id, name = "Tài liệu" });
 
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
-        Guid id = (await response.Content.ReadFromJsonAsync<CreatedResponse>())!.Id;
+        response.Headers.ETag!.Tag.ShouldBe("\"1\"");
+        Item folder = (await response.Content.ReadFromJsonAsync<Item>())!;
+        folder.ParentId.ShouldBe(root.Id);
+        (await Harness.Published.Any<ItemCreated>(x =>
+            x.Context.Message.ItemId == folder.Id && x.Context.Message.AncestorIds.SequenceEqual(new[] { root.Id }))).ShouldBeTrue();
+    }
 
-        (await Harness.Published.Any<FolderCreated>(x => x.Context.Message.FolderId == id && x.Context.Message.OwnerId == _userId))
+    [Fact]
+    public async Task CreateFolder_DuplicateName_IgnoringCaseAndUnicodeForm_Returns409()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+        await CreateFolderAsync(client, root.Id, "Báo cáo");
+
+        var response = await client.PostAsJsonAsync("/api/v1/folders", new { parentId = root.Id, name = "BÁO CÁO" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ErrorCode(response)).ShouldBe("DRIVE.NAME_CONFLICT");
+    }
+
+    [Fact]
+    public async Task ListChildren_FoldersFirst_SortedByName_WithPaging()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+        await UploadFileAsync(client, root.Id, "a-file.txt", 10);
+        foreach (string name in new[] { "Charlie", "alpha", "Bravo" })
+        {
+            await CreateFolderAsync(client, root.Id, name);
+        }
+
+        Page first = (await client.GetFromJsonAsync<Page>($"/api/v1/items/{root.Id}/children?pageSize=2"))!;
+        Page second = (await client.GetFromJsonAsync<Page>($"/api/v1/items/{root.Id}/children?pageSize=2&pageToken={first.NextPageToken}"))!;
+
+        first.Items.Select(i => i.Name).ShouldBe(["alpha", "Bravo"]);
+        first.NextPageToken.ShouldNotBeNull();
+        second.Items.Select(i => i.Name).ShouldBe(["Charlie", "a-file.txt"]); // file luôn sau thư mục
+        second.NextPageToken.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ListChildren_BySizeDescending_KeepsFoldersFirst()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+        await UploadFileAsync(client, root.Id, "small.bin", 1);
+        await UploadFileAsync(client, root.Id, "big.bin", 1000);
+        await CreateFolderAsync(client, root.Id, "zzz");
+
+        Page page = (await client.GetFromJsonAsync<Page>($"/api/v1/items/{root.Id}/children?orderBy=size&desc=true"))!;
+
+        page.Items.Select(i => i.Name).ShouldBe(["zzz", "big.bin", "small.bin"]);
+    }
+
+    [Fact]
+    public async Task Rename_WithStaleIfMatch_Returns412_AndWithCurrentRevision_Succeeds()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+        Item folder = await CreateFolderAsync(client, root.Id, "cũ");
+
+        var stale = await PatchAsync(client, folder.Id, new { name = "x" }, ifMatch: "\"7\"");
+        stale.StatusCode.ShouldBe(HttpStatusCode.PreconditionFailed);
+        (await ErrorCode(stale)).ShouldBe("DRIVE.REVISION_MISMATCH");
+
+        var ok = await PatchAsync(client, folder.Id, new { name = "mới" }, ifMatch: "\"1\"");
+        ok.StatusCode.ShouldBe(HttpStatusCode.OK);
+        ok.Headers.ETag!.Tag.ShouldBe("\"2\"");
+        (await Harness.Published.Any<ItemRenamed>(x => x.Context.Message.ItemId == folder.Id && x.Context.Message.NewName == "mới"))
             .ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Rename_Root_Returns400()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+
+        var response = await PatchAsync(client, root.Id, new { name = "x" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorCode(response)).ShouldBe("DRIVE.ROOT_IMMUTABLE");
+    }
+
+    [Fact]
+    public async Task Move_Folder_UpdatesWholeSubtree()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+        Item a = await CreateFolderAsync(client, root.Id, "A");
+        Item b = await CreateFolderAsync(client, root.Id, "B");
+        Item child = await CreateFolderAsync(client, a.Id, "child");
+        Item grandChild = await CreateFolderAsync(client, child.Id, "grand");
+
+        var move = await client.PostAsJsonAsync($"/api/v1/items/{child.Id}/move", new { newParentId = b.Id });
+
+        move.StatusCode.ShouldBe(HttpStatusCode.OK);
+        Item[] ancestors = (await client.GetFromJsonAsync<Item[]>($"/api/v1/items/{grandChild.Id}/ancestors"))!;
+        ancestors.Select(x => x.Id).ShouldBe([root.Id, b.Id, child.Id]); // path của cháu đã đổi theo
+        (await Harness.Published.Any<ItemMoved>(x =>
+            x.Context.Message.ItemId == child.Id && x.Context.Message.OldParentId == a.Id && x.Context.Message.NewParentId == b.Id))
+            .ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Move_IntoOwnDescendant_Returns409()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+        Item parent = await CreateFolderAsync(client, root.Id, "parent");
+        Item child = await CreateFolderAsync(client, parent.Id, "child");
+
+        var response = await client.PostAsJsonAsync($"/api/v1/items/{parent.Id}/move", new { newParentId = child.Id });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ErrorCode(response)).ShouldBe("DRIVE.INVALID_MOVE");
+    }
+
+    [Fact]
+    public async Task Upload_Complete_CreatesFile_PublishesVersion_AndIsIdempotent()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+
+        var start = await client.PostAsJsonAsync("/api/v1/uploads", new { parentId = root.Id, name = "báo cáo.pdf", sizeBytes = 1234, mimeType = "application/pdf" });
+        start.StatusCode.ShouldBe(HttpStatusCode.Created);
+        Upload upload = (await start.Content.ReadFromJsonAsync<Upload>())!;
+        upload.Parts.ShouldHaveSingleItem().Url.ShouldStartWith("http://localhost/mycloud-blobs/"); // ký theo origin của request
+
+        Item file = await CompleteAsync(client, upload.UploadId);
+        Item again = await CompleteAsync(client, upload.UploadId);
+
+        file.Kind.ShouldBe("file");
+        file.Name.ShouldBe("báo cáo.pdf");
+        file.SizeBytes.ShouldBe(1234);
+        again.Id.ShouldBe(file.Id);
+        (await Harness.Published.Any<FileVersionAdded>(x => x.Context.Message.ItemId == file.Id && x.Context.Message.SizeBytes == 1234))
+            .ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Upload_SameName_IsRenamedAutomatically()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+
+        Item first = await UploadFileAsync(client, root.Id, "report.pdf", 1);
+        Item second = await UploadFileAsync(client, root.Id, "REPORT.pdf", 1);
+        Item third = await UploadFileAsync(client, root.Id, "report.pdf", 1);
+
+        first.Name.ShouldBe("report.pdf");
+        second.Name.ShouldBe("REPORT (1).pdf");
+        third.Name.ShouldBe("report (2).pdf");
+    }
+
+    [Fact]
+    public async Task Upload_OverQuota_Returns413WithStorageCode()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+        factory.Storage.QuotaBytes = 1000;
+        try
+        {
+            var response = await client.PostAsJsonAsync("/api/v1/uploads", new { parentId = root.Id, name = "big.iso", sizeBytes = 5000 });
+
+            response.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
+            (await ErrorCode(response)).ShouldBe("STORAGE.QUOTA_EXCEEDED");
+        }
+        finally
+        {
+            factory.Storage.QuotaBytes = long.MaxValue;
+        }
+    }
+
+    [Fact]
+    public async Task Upload_Abort_CallsStorage()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+        Upload upload = await StartUploadAsync(client, root.Id, "x.bin", 1);
+
+        (await client.DeleteAsync($"/api/v1/uploads/{upload.UploadId}")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        factory.Storage.Aborted.ShouldContain(upload.UploadId);
+    }
+
+    [Fact]
+    public async Task DownloadUrl_ForFile_ReturnsSignedLink_ForFolder_Returns400()
+    {
+        using HttpClient client = NewUser();
+        Item root = await GetRootAsync(client);
+        Item file = await UploadFileAsync(client, root.Id, "ảnh.png", 5);
+
+        var response = await client.PostAsJsonAsync($"/api/v1/items/{file.Id}/download-url", new { inline = true });
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        Link link = (await response.Content.ReadFromJsonAsync<Link>())!;
+        link.Url.ShouldContain(Uri.EscapeDataString("ảnh.png"));
+        link.Url.ShouldContain("inline=True");
+
+        var folder = await client.PostAsJsonAsync($"/api/v1/items/{root.Id}/download-url", new { });
+        folder.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task OtherUser_CannotReadOrChange_AnyItem_Returns404()
+    {
+        // IDOR: B biết id thư mục / file / upload của A nhưng mọi thao tác đều nhận 404 như không tồn tại.
+        using HttpClient a = NewUser();
+        using HttpClient b = NewUser();
+        Item rootA = await GetRootAsync(a);
+        Item folderA = await CreateFolderAsync(a, rootA.Id, "của A");
+        Item fileA = await UploadFileAsync(a, folderA.Id, "bí mật.txt", 10);
+        Upload pendingA = await StartUploadAsync(a, rootA.Id, "đang tải.bin", 10);
+        Item rootB = await GetRootAsync(b);
+
+        HttpResponseMessage[] responses =
+        [
+            await b.GetAsync($"/api/v1/items/{folderA.Id}"),
+            await b.GetAsync($"/api/v1/items/{folderA.Id}/children"),
+            await b.GetAsync($"/api/v1/items/{fileA.Id}/ancestors"),
+            await b.PostAsJsonAsync("/api/v1/folders", new { parentId = folderA.Id, name = "x" }),
+            await PatchAsync(b, fileA.Id, new { name = "hacked.txt" }),
+            await b.PostAsJsonAsync($"/api/v1/items/{fileA.Id}/move", new { newParentId = rootB.Id }),
+            await b.PostAsJsonAsync($"/api/v1/items/{folderA.Id}/move", new { newParentId = rootB.Id }),
+            await b.PostAsJsonAsync("/api/v1/uploads", new { parentId = folderA.Id, name = "x", sizeBytes = 1 }),
+            await b.PostAsJsonAsync($"/api/v1/uploads/{pendingA.UploadId}/complete", new { parts = new[] { new { partNumber = 1, eTag = "\"x\"" } } }),
+            await b.DeleteAsync($"/api/v1/uploads/{pendingA.UploadId}"),
+            await b.PostAsJsonAsync($"/api/v1/items/{fileA.Id}/download-url", new { }),
+        ];
+
+        responses.Select(r => r.StatusCode).ShouldAllBe(s => s == HttpStatusCode.NotFound);
+
+        // A không chuyển được item của mình vào thư mục của B.
+        (await a.PostAsJsonAsync($"/api/v1/items/{fileA.Id}/move", new { newParentId = rootB.Id })).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await GetItemAsync(a, fileA.Id)).Name.ShouldBe("bí mật.txt");
     }
 
     [Fact]
@@ -36,9 +290,7 @@ public sealed class DriveApiTests(DriveApiFactory factory) : IClassFixture<Drive
     {
         using HttpClient anonymous = factory.CreateClient();
 
-        var response = await anonymous.PostAsJsonAsync("/api/v1/folders", new { name = "x" });
-
-        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await anonymous.GetAsync("/api/v1/items/root")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -46,11 +298,9 @@ public sealed class DriveApiTests(DriveApiFactory factory) : IClassFixture<Drive
     {
         using HttpClient client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", TestJwt.CreateToken(_userId, signWithUnknownKey: true));
+            new AuthenticationHeaderValue("Bearer", TestJwt.CreateToken(Guid.NewGuid(), signWithUnknownKey: true));
 
-        var response = await client.PostAsJsonAsync("/api/v1/folders", new { name = "x" });
-
-        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await client.GetAsync("/api/v1/items/root")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -58,117 +308,9 @@ public sealed class DriveApiTests(DriveApiFactory factory) : IClassFixture<Drive
     {
         using HttpClient client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", TestJwt.CreateToken(_userId, expires: DateTimeOffset.UtcNow.AddMinutes(-5)));
+            new AuthenticationHeaderValue("Bearer", TestJwt.CreateToken(Guid.NewGuid(), expires: DateTimeOffset.UtcNow.AddMinutes(-5)));
 
-        var response = await client.PostAsJsonAsync("/api/v1/folders", new { name = "x" });
-
-        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task OtherUser_CannotTouchFolder_Returns404()
-    {
-        // IDOR: user B biết id thư mục của A nhưng không được đổi tên, xoá, tạo con hay upload vào đó.
-        Guid folderOfA = await CreateFolderAsync("của A");
-        using HttpClient userB = factory.CreateClient().AsUser(Guid.NewGuid());
-
-        (await userB.PutAsJsonAsync($"/api/v1/folders/{folderOfA}", new { name = "hacked" })).StatusCode.ShouldBe(HttpStatusCode.NotFound);
-        (await userB.DeleteAsync($"/api/v1/folders/{folderOfA}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
-        (await userB.PostAsJsonAsync("/api/v1/folders", new { name = "con", parentId = folderOfA })).StatusCode.ShouldBe(HttpStatusCode.NotFound);
-
-        using var form = new MultipartFormDataContent();
-        form.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("x")), "file", "x.txt");
-        (await userB.PostAsync($"/api/v1/folders/{folderOfA}/files", form)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
-
-        // Thư mục của A không bị ảnh hưởng.
-        (await Client.PutAsJsonAsync($"/api/v1/folders/{folderOfA}", new { name = "vẫn của A" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-    }
-
-    [Fact]
-    public async Task OtherUser_CannotTouchFile_Returns404()
-    {
-        Guid folder = await CreateFolderAsync("files của A");
-        using var form = new MultipartFormDataContent();
-        form.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("bí mật")), "file", "secret.txt");
-        var upload = await Client.PostAsync($"/api/v1/folders/{folder}/files", form);
-        Guid fileId = (await upload.Content.ReadFromJsonAsync<CreatedResponse>())!.Id;
-
-        using HttpClient userB = factory.CreateClient().AsUser(Guid.NewGuid());
-        Guid folderOfB = (await (await userB.PostAsJsonAsync("/api/v1/folders", new { name = "của B" }))
-            .Content.ReadFromJsonAsync<CreatedResponse>())!.Id;
-
-        (await userB.PutAsJsonAsync($"/api/v1/files/{fileId}", new { name = "x.txt", folderId = folderOfB }))
-            .StatusCode.ShouldBe(HttpStatusCode.NotFound);
-        (await userB.DeleteAsync($"/api/v1/files/{fileId}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
-
-        // A cũng không chuyển được file của mình vào thư mục của B.
-        (await Client.PutAsJsonAsync($"/api/v1/files/{fileId}", new { name = "x.txt", folderId = folderOfB }))
-            .StatusCode.ShouldBe(HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task CreateFolder_EmptyName_Returns400ValidationProblem()
-    {
-        var response = await Client.PostAsJsonAsync("/api/v1/folders", new { name = "" });
-
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await response.Content.ReadAsStringAsync()).ShouldContain("Validation Error");
-    }
-
-    [Fact]
-    public async Task CreateFolder_UnknownParent_Returns404()
-    {
-        var response = await Client.PostAsJsonAsync("/api/v1/folders", new { name = "x", parentId = Guid.NewGuid() });
-
-        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task UpdateFolder_Unknown_Returns404()
-    {
-        // Bản cũ trả 500 (NullReferenceException) với id không tồn tại.
-        var response = await Client.PutAsJsonAsync($"/api/v1/folders/{Guid.NewGuid()}", new { name = "x" });
-
-        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task DeleteFolder_WithChildren_Returns409()
-    {
-        Guid parent = await CreateFolderAsync("cha");
-        await CreateFolderAsync("con", parent);
-
-        var response = await Client.DeleteAsync($"/api/v1/folders/{parent}");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
-    }
-
-    [Fact]
-    public async Task UploadFile_ThenUpdateMetadata_KeepsContent_ThenDelete_RemovesContent()
-    {
-        Guid folder = await CreateFolderAsync("uploads");
-        int filesBefore = CountStoredFiles();
-
-        using var form = new MultipartFormDataContent();
-        var content = new ByteArrayContent(Encoding.UTF8.GetBytes("hello MyCloud"));
-        content.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
-        form.Add(content, "file", "hello.txt");
-
-        var upload = await Client.PostAsync($"/api/v1/folders/{folder}/files", form);
-        upload.StatusCode.ShouldBe(HttpStatusCode.Created);
-        Guid fileId = (await upload.Content.ReadFromJsonAsync<CreatedResponse>())!.Id;
-        CountStoredFiles().ShouldBe(filesBefore + 1);
-
-        var update = await Client.PutAsJsonAsync($"/api/v1/files/{fileId}", new { name = "renamed.txt", folderId = folder });
-        update.StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        (await Harness.Published.Any<FileUpdated>(x =>
-            x.Context.Message.FileId == fileId && x.Context.Message.Name == "renamed.txt" && x.Context.Message.SizeBytes == 13))
-            .ShouldBeTrue();
-
-        var delete = await Client.DeleteAsync($"/api/v1/files/{fileId}");
-        delete.StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        CountStoredFiles().ShouldBe(filesBefore);
-        (await Harness.Published.Any<FileDeleted>(x => x.Context.Message.FileId == fileId)).ShouldBeTrue();
+        (await client.GetAsync("/api/v1/items/root")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -176,18 +318,53 @@ public sealed class DriveApiTests(DriveApiFactory factory) : IClassFixture<Drive
     {
         using HttpClient anonymous = factory.CreateClient();
 
-        var response = await anonymous.GetAsync("/health/ready");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await anonymous.GetAsync("/health/ready")).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
-    private async Task<Guid> CreateFolderAsync(string name, Guid? parentId = null)
+    private static async Task<Item> GetRootAsync(HttpClient client) =>
+        (await client.GetFromJsonAsync<Item>("/api/v1/items/root"))!;
+
+    private static async Task<Item> GetItemAsync(HttpClient client, Guid id) =>
+        (await client.GetFromJsonAsync<Item>($"/api/v1/items/{id}"))!;
+
+    private static async Task<Item> CreateFolderAsync(HttpClient client, Guid parentId, string name)
     {
-        var response = await Client.PostAsJsonAsync("/api/v1/folders", new { name, parentId });
+        var response = await client.PostAsJsonAsync("/api/v1/folders", new { parentId, name });
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<CreatedResponse>())!.Id;
+        return (await response.Content.ReadFromJsonAsync<Item>())!;
     }
 
-    private int CountStoredFiles() =>
-        Directory.Exists(factory.ContentRoot) ? Directory.GetFiles(factory.ContentRoot).Length : 0;
+    private static async Task<Upload> StartUploadAsync(HttpClient client, Guid parentId, string name, long size)
+    {
+        var response = await client.PostAsJsonAsync("/api/v1/uploads", new { parentId, name, sizeBytes = size, mimeType = "application/octet-stream" });
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<Upload>())!;
+    }
+
+    private static async Task<Item> CompleteAsync(HttpClient client, Guid uploadId)
+    {
+        var response = await client.PostAsJsonAsync($"/api/v1/uploads/{uploadId}/complete", new { parts = new[] { new { partNumber = 1, eTag = "\"etag-1\"" } } });
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<Item>())!;
+    }
+
+    private static async Task<Item> UploadFileAsync(HttpClient client, Guid parentId, string name, long size) =>
+        await CompleteAsync(client, (await StartUploadAsync(client, parentId, name, size)).UploadId);
+
+    private static Task<HttpResponseMessage> PatchAsync(HttpClient client, Guid id, object body, string? ifMatch = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/items/{id}") { Content = JsonContent.Create(body) };
+        if (ifMatch is not null)
+        {
+            request.Headers.TryAddWithoutValidation("If-Match", ifMatch);
+        }
+
+        return client.SendAsync(request);
+    }
+
+    private static async Task<string?> ErrorCode(HttpResponseMessage response)
+    {
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return doc.RootElement.TryGetProperty("code", out JsonElement code) ? code.GetString() : null;
+    }
 }

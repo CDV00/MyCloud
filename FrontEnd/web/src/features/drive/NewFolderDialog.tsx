@@ -3,40 +3,40 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type FormEvent } from 'react';
 import { createFolder } from '../../api/drive';
 import { toUserMessage } from '../../api/errors';
-import { driveKeys } from './queries';
+import { invalidateFolders } from './queries';
 
 interface Props {
   open: boolean;
+  /** Thư mục chứa; null khi chưa biết (đang tải thư mục gốc). */
   parentId: string | null;
   onClose(): void;
 }
 
+const DEFAULT_NAME = 'Thư mục không có tiêu đề';
+
 export function NewFolderDialog({ open, parentId, onClose }: Props) {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [name, setName] = useState('Thư mục không có tiêu đề');
+  const [name, setName] = useState(DEFAULT_NAME);
 
   const mutation = useMutation({
-    mutationFn: () => createFolder(name.trim(), parentId),
+    mutationFn: () => createFolder(parentId!, name.trim()),
     onSuccess: () => {
-      // Danh sách đọc từ Search (cập nhật bất đồng bộ qua RabbitMQ) nên làm mới lại sau một nhịp.
-      // Phase 2 đọc thẳng từ Drive ⇒ thấy ngay thư mục vừa tạo.
-      const key = driveKeys.folders(parentId);
-      void queryClient.invalidateQueries({ queryKey: key });
-      setTimeout(() => void queryClient.invalidateQueries({ queryKey: key }), 1000);
+      // Drive đọc nhất quán ngay (PostgreSQL) — làm mới là thấy thư mục mới.
+      invalidateFolders(queryClient, parentId);
       close();
     },
   });
 
   function close() {
-    setName('Thư mục không có tiêu đề');
+    setName(DEFAULT_NAME);
     mutation.reset();
     onClose();
   }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (name.trim()) mutation.mutate();
+    if (name.trim() && parentId) mutation.mutate();
   }
 
   return (
@@ -63,13 +63,16 @@ export function NewFolderDialog({ open, parentId, onClose }: Props) {
             label="Tên thư mục"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onFocus={(e) => e.target.select()}
             slotProps={{ htmlInput: { maxLength: 255 } }}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={close}>Huỷ</Button>
-          <Button type="submit" variant="contained" disabled={!name.trim() || mutation.isPending}>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={!name.trim() || !parentId || mutation.isPending}
+          >
             Tạo
           </Button>
         </DialogActions>

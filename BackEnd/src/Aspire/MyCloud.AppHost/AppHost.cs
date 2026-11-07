@@ -11,6 +11,7 @@ var postgres = builder.AddPostgres("postgres")
 
 var identityDb = postgres.AddDatabase("identitydb", databaseName: "identity");
 var driveDb = postgres.AddDatabase("drivedb", databaseName: "drive");
+var storageDb = postgres.AddDatabase("storagedb", databaseName: "storage");
 
 var mongo = builder.AddMongoDB("mongo")
     .WithDataVolume()
@@ -18,7 +19,7 @@ var mongo = builder.AddMongoDB("mongo")
 var searchDb = mongo.AddDatabase("searchdb", databaseName: "search");
 
 var rabbitmq = builder.AddRabbitMQ("rabbitmq")
-    .WithManagementPlugin()
+    .WithManagementPlugin(port: 15672) // cổng cố định: menu quản lý ở http://localhost/
     .WithDataVolume()
     .WithLifetime(ContainerLifetime.Persistent);
 
@@ -31,10 +32,15 @@ var minio = builder.AddMinioContainer("minio")
     .WithImage("chainguard/minio", "latest")
     .WithImageRegistry("cgr.dev")
     .WithImageSHA256("aea6c163749e1caca37f907976dcf337177ddf5f558808f2aa591618fd3a6eef")
+    .WithEndpoint("console", e => e.Port = 9001)
+    // API S3 cố định ở 9000: Vite (dev) và nginx proxy /mycloud-blobs/ tới đây để trình duyệt upload/tải cùng origin (ADR-013).
+    .WithEndpoint("http", e => e.Port = 9000)
     .WithDataVolume()
     .WithLifetime(ContainerLifetime.Persistent);
 
-var mailpit = builder.AddMailPit("mailpit");
+// Persistent: giữ cổng cố định 8025 mà không bị container cũ (bị bỏ lại khi AppHost tắt đột ngột) chiếm chỗ.
+var mailpit = builder.AddMailPit("mailpit", httpPort: 8025)
+    .WithLifetime(ContainerLifetime.Persistent);
 
 // ---------- Service ----------
 // Identity tự sinh khoá ký RS256 (lưu DB, mã hoá bằng Data Protection) và công bố JWKS.
@@ -43,13 +49,17 @@ var identity = builder.AddProject<Projects.Identity_Api>("identity")
     .WithReference(identityDb).WaitFor(identityDb)
     .WithReference(rabbitmq).WaitFor(rabbitmq);
 
+// Storage: REST (qua Gateway) + gRPC "grpc" (HTTP/2, chỉ Drive gọi) — cả hai khai báo ở Kestrel:Endpoints của project.
+var storage = builder.AddProject<Projects.Storage_Api>("storage")
+    .WithReference(storageDb).WaitFor(storageDb)
+    .WithReference(rabbitmq).WaitFor(rabbitmq)
+    .WithReference(minio).WaitFor(minio)
+    .WithReference(identity);
+
 var drive = builder.AddProject<Projects.Drive_Api>("drive")
     .WithReference(driveDb).WaitFor(driveDb)
     .WithReference(rabbitmq).WaitFor(rabbitmq)
-    .WithReference(identity);
-
-var storage = builder.AddProject<Projects.Storage_Api>("storage")
-    .WithReference(minio).WaitFor(minio)
+    .WithReference(storage).WaitFor(storage)
     .WithReference(identity);
 
 var sharing = builder.AddProject<Projects.Sharing_Api>("sharing")
@@ -84,7 +94,16 @@ var gateway = builder.AddProject<Projects.MyCloud_Gateway>("gateway")
 // SameSite=Strict hoạt động và không cần CORS. Production: reverse proxy phục vụ SPA + /api trên cùng domain.
 builder.AddViteApp("web", "../../../../FrontEnd/web")
     .WithReference(gateway).WaitFor(gateway)
+    .WithEnvironment("MINIO_URL", minio.GetEndpoint("http"))
     .WithEndpoint("http", e => e.Port = 5173) // cổng cố định, quen thuộc với Vite
     .WithExternalHttpEndpoints();
+
+// Container của Aspire chỉ nghe trên 127.0.0.1, còn "localhost" trên Windows phân giải ra ::1 trước: .NET thử IPv6 tuần tự
+// nên mỗi kết nối MỚI tới Postgres/MinIO/RabbitMQ mất ~2 s (đo được 2047 ms so với 12 ms) — đủ làm lời gọi gRPC
+// (deadline 2 s) thất bại ngẫu nhiên. Chỉ áp dụng khi chạy bằng AppHost ở máy dev.
+foreach (ProjectResource project in builder.Resources.OfType<ProjectResource>().ToList())
+{
+    builder.CreateResourceBuilder(project).WithEnvironment("DOTNET_SYSTEM_NET_DISABLEIPV6", "1");
+}
 
 builder.Build().Run();

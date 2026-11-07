@@ -23,9 +23,15 @@ Aspire khởi động PostgreSQL, MongoDB, RabbitMQ, Redis, MinIO, Mailpit, tấ
 | Gateway | http://localhost:5000 — `/api/{identity\|drive\|storage\|sharing\|search\|notification}/v1/...` |
 | Identity | http://localhost:5101/scalar — JWKS: `/.well-known/jwks.json` |
 | Drive | http://localhost:5102/scalar |
-| Storage / Sharing (khung) | http://localhost:5103, http://localhost:5104 |
+| Storage | http://localhost:5103/scalar (REST) — gRPC nội bộ ở endpoint `grpc` (HTTP/2) |
+| Sharing (khung) | http://localhost:5104 |
 | Search | http://localhost:5105/scalar |
 | Notification (khung) | http://localhost:5106 |
+| RabbitMQ management | http://localhost:15672 (mật khẩu: Aspire dashboard → rabbitmq → Parameters) |
+| Mailpit | http://localhost:8025 |
+| MinIO console | http://localhost:9001 (API S3: http://localhost:9000, proxy cùng origin tại `/mycloud-blobs/`) |
+
+Nếu đang chạy nginx gateway (`D:\Docker\nginx`), app còn mở được ở **http://mycloud.localhost**, và **http://localhost/** là menu quản lý có trạng thái của mọi app.
 
 ### Xác thực
 
@@ -42,12 +48,14 @@ curl -X POST http://localhost:5000/api/identity/v1/auth/login -H "Content-Type: 
 ```
 
 ```bash
-curl -X POST http://localhost:5000/api/drive/v1/folders -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" -d '{"name":"Tài liệu"}'
+curl -X POST http://localhost:5000/api/drive/v1/folders -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" -d '{"parentId":"<rootId>","name":"Tài liệu"}'
 ```
 
 ```bash
-curl http://localhost:5000/api/search/v1/folders -H "Authorization: Bearer <accessToken>"
+curl http://localhost:5000/api/drive/v1/items/root -H "Authorization: Bearer <accessToken>"
 ```
+
+Upload: `POST /api/drive/v1/uploads` trả URL đã ký cho từng part → PUT từng part thẳng lên object storage → `POST /api/drive/v1/uploads/{id}/complete` với danh sách ETag (docs/05). Web app làm sẵn việc này.
 
 Trên Scalar (`/scalar` của từng service), bấm **Authentication → Bearer** và dán access token.
 
@@ -63,8 +71,8 @@ src/
   Contracts/     MyCloud.Contracts.Events (integration event) | Protos (gRPC, buf)
   Gateway/       MyCloud.Gateway (YARP, xác thực, rate limit, correlation id)
   Services/      Identity | Drive (4 lớp) | Search | Storage | Sharing | Notification | Media (worker)
-tests/           Drive.Domain.Tests | Drive.IntegrationTests | Identity.IntegrationTests (Testcontainers)
-                 | Gateway.Tests | Architecture.Tests
+tests/           Drive.Domain.Tests | Drive.IntegrationTests | Identity.IntegrationTests | Storage.IntegrationTests
+                 (Testcontainers: PostgreSQL, MinIO) | Gateway.Tests | Architecture.Tests | MyCloud.Testing (dùng chung)
 ```
 
 ## Lệnh thường dùng

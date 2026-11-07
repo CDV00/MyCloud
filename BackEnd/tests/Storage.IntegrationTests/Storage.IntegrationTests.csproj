@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Docker is required: Testcontainers starts PostgreSQL and MinIO. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Services\Storage\Storage.Api\Storage.Api.csproj" />
+    <ProjectReference Include="..\MyCloud.Testing\MyCloud.Testing.csproj" />
+  </ItemGroup>
+</Project>

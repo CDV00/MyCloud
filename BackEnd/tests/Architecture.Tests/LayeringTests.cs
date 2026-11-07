@@ -4,7 +4,7 @@ using Drive.Infrastructure;
 using MyCloud.BuildingBlocks.Domain.Primitives;
 using MyCloud.Contracts.Events;
 using NetArchTest.Rules;
-using DriveDomainMarker = Drive.Domain.Entities.Folder;
+using DriveDomainMarker = Drive.Domain.Items.DriveItem;
 
 namespace Architecture.Tests;
 

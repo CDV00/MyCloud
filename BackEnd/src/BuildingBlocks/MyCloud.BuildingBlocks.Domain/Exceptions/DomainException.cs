@@ -7,6 +7,9 @@ public abstract class DomainException : Exception
         : base(message) => Title = title;
 
     public string Title { get; }
+
+    /// <summary>Mã lỗi ổn định cho client (vd <c>STORAGE.QUOTA_EXCEEDED</c>) — client dịch sang thông báo của mình.</summary>
+    public virtual string? Code => null;
 }
 
 /// <summary>Dữ liệu đầu vào vi phạm quy tắc nghiệp vụ → 400 / INVALID_ARGUMENT.</summary>
@@ -17,3 +20,9 @@ public abstract class NotFoundException(string message) : DomainException("Not F
 
 /// <summary>Xung đột trạng thái (trùng tên, sai revision...) → 409 / FAILED_PRECONDITION.</summary>
 public abstract class ConflictException(string message) : DomainException("Conflict", message);
+
+/// <summary>Bản ghi đã bị người khác sửa (sai <c>If-Match</c>) → 412 / ABORTED.</summary>
+public abstract class PreconditionFailedException(string message) : DomainException("Precondition Failed", message);
+
+/// <summary>Vượt giới hạn tài nguyên (dung lượng, kích thước file) → 413 / RESOURCE_EXHAUSTED.</summary>
+public abstract class LimitExceededException(string message) : DomainException("Limit Exceeded", message);

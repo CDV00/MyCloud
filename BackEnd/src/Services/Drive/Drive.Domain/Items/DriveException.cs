@@ -1,0 +1,68 @@
+using MyCloud.BuildingBlocks.Domain.Exceptions;
+
+namespace Drive.Domain.Items;
+
+/// <summary>Lỗi nghiệp vụ của Drive; <c>Code</c> ổn định để client hiển thị thông báo riêng.</summary>
+public static class DriveException
+{
+    /// <summary>Item không tồn tại HOẶC người gọi không có quyền — luôn 404 để không lộ id hợp lệ.</summary>
+    public sealed class ItemNotFound(Guid itemId) : NotFoundException($"Item '{itemId}' was not found.")
+    {
+        public override string Code => "DRIVE.ITEM_NOT_FOUND";
+    }
+
+    public sealed class UploadNotFound(Guid uploadId) : NotFoundException($"Upload '{uploadId}' was not found.")
+    {
+        public override string Code => "DRIVE.UPLOAD_NOT_FOUND";
+    }
+
+    public sealed class InvalidName(string name)
+        : BadRequestException($"The name '{name}' is invalid. It must be 1-255 characters and must not contain '/', '\\' or control characters.")
+    {
+        public override string Code => "DRIVE.INVALID_NAME";
+    }
+
+    public sealed class NameConflict(string name) : ConflictException(name.Length == 0
+        ? "An item with this name already exists in this folder."
+        : $"An item named '{name}' already exists in this folder.")
+    {
+        public override string Code => "DRIVE.NAME_CONFLICT";
+    }
+
+    public sealed class NotAFolder(Guid itemId) : BadRequestException($"Item '{itemId}' is not a folder.")
+    {
+        public override string Code => "DRIVE.NOT_A_FOLDER";
+    }
+
+    public sealed class NotAFile(Guid itemId) : BadRequestException($"Item '{itemId}' is not a file.")
+    {
+        public override string Code => "DRIVE.NOT_A_FILE";
+    }
+
+    public sealed class InvalidMove(string reason) : ConflictException(reason)
+    {
+        public override string Code => "DRIVE.INVALID_MOVE";
+    }
+
+    public sealed class RootImmutable() : BadRequestException("The root folder cannot be renamed or moved.")
+    {
+        public override string Code => "DRIVE.ROOT_IMMUTABLE";
+    }
+
+    /// <summary>Client sửa dựa trên bản cũ (<c>If-Match</c> không khớp revision hiện tại).</summary>
+    public sealed class RevisionMismatch(long expected, long actual)
+        : PreconditionFailedException($"The item has changed (revision {actual}, expected {expected}). Reload and try again.")
+    {
+        public override string Code => "DRIVE.REVISION_MISMATCH";
+    }
+
+    /// <summary>Thư mục gốc vừa được tạo bởi một yêu cầu khác cùng lúc (vd consumer UserRegistered) — đọc lại là có.</summary>
+    public sealed class RootCreatedConcurrently() : ConflictException("The root folder was created concurrently.");
+
+    /// <summary>Hai người cùng sửa một item; bản lưu sau bị từ chối thay vì ghi đè âm thầm.</summary>
+    public sealed class ConcurrentModification()
+        : PreconditionFailedException("The item was changed by someone else. Reload and try again.")
+    {
+        public override string Code => "DRIVE.REVISION_MISMATCH";
+    }
+}

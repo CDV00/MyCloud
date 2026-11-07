@@ -17,3 +17,15 @@ export function initials(name: string): string {
   const letters = parts.length > 1 ? [parts[0]![0], parts[parts.length - 1]![0]] : [parts[0]?.[0]];
   return letters.filter(Boolean).join('').toUpperCase() || '?';
 }
+
+/** Ngày sửa đổi kiểu Drive: hôm nay ⇒ giờ "14:05", năm nay ⇒ "7 thg 11", năm khác ⇒ "07/11/2025". */
+export function formatModified(iso: string, now = new Date()): string {
+  const date = new Date(iso);
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  }
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString('vi-VN', { day: 'numeric', month: 'short' });
+  }
+  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}

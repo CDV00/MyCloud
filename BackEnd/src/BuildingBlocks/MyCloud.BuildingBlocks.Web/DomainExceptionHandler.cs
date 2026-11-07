@@ -17,6 +17,8 @@ internal sealed class DomainExceptionHandler(IProblemDetailsService problemDetai
             NotFoundException e => (StatusCodes.Status404NotFound, e.Title, e.Message),
             BadRequestException e => (StatusCodes.Status400BadRequest, e.Title, e.Message),
             ConflictException e => (StatusCodes.Status409Conflict, e.Title, e.Message),
+            PreconditionFailedException e => (StatusCodes.Status412PreconditionFailed, e.Title, e.Message),
+            LimitExceededException e => (StatusCodes.Status413PayloadTooLarge, e.Title, e.Message),
             DomainException e => (StatusCodes.Status400BadRequest, e.Title, e.Message),
             BadHttpRequestException e => (e.StatusCode, "Bad Request", e.Message),
             UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, "Unauthorized", null),
@@ -33,7 +35,18 @@ internal sealed class DomainExceptionHandler(IProblemDetailsService problemDetai
         {
             HttpContext = httpContext,
             Exception = exception,
-            ProblemDetails = new ProblemDetails { Status = status, Title = title, Detail = detail },
+            ProblemDetails = Problem(exception, status, title, detail),
         });
+    }
+
+    private static ProblemDetails Problem(Exception exception, int status, string title, string? detail)
+    {
+        var problem = new ProblemDetails { Status = status, Title = title, Detail = detail };
+        if (exception is DomainException { Code: { } code })
+        {
+            problem.Extensions["code"] = code;
+        }
+
+        return problem;
     }
 }
