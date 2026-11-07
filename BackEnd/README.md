@@ -6,6 +6,7 @@
 
 - .NET SDK 10 (xem `global.json`)
 - Docker Desktop (đang chạy)
+- Node.js ≥ 20.18 cho web app (khuyến nghị Node 24 LTS)
 
 ## Chạy toàn bộ hệ thống (khuyến nghị)
 
@@ -13,44 +14,57 @@
 dotnet run --project src/Aspire/MyCloud.AppHost
 ```
 
-Aspire khởi động PostgreSQL, MongoDB, RabbitMQ, Redis, MinIO, Mailpit và tất cả service; console in ra URL dashboard (log, trace, metric). Lần đầu chạy sẽ mất vài phút để kéo image. Container được giữ lại giữa các lần chạy (`ContainerLifetime.Persistent`).
+Aspire khởi động PostgreSQL, MongoDB, RabbitMQ, Redis, MinIO, Mailpit, tất cả service và web app (Vite); console in ra URL dashboard (log, trace, metric). Lần đầu chạy sẽ mất vài phút để kéo image và `npm install`. Container được giữ lại giữa các lần chạy (`ContainerLifetime.Persistent`).
 
 | Thành phần | URL (dev) |
 |---|---|
+| **Web app** | http://localhost:5173 |
 | Aspire dashboard | http://localhost:15080 |
 | Gateway | http://localhost:5000 — `/api/{identity\|drive\|storage\|sharing\|search\|notification}/v1/...` |
-| Identity | http://localhost:5101/scalar |
+| Identity | http://localhost:5101/scalar — JWKS: `/.well-known/jwks.json` |
 | Drive | http://localhost:5102/scalar |
 | Storage / Sharing (khung) | http://localhost:5103, http://localhost:5104 |
 | Search | http://localhost:5105/scalar |
 | Notification (khung) | http://localhost:5106 |
 
-Khoá ký JWT tạm thời (Phase 0) được Aspire sinh tự động và lưu trong user-secrets của AppHost — không có secret nào trong `appsettings*.json`.
+### Xác thực
 
-Ví dụ qua gateway:
+Mọi API (trừ `/api/identity/v1/auth/*` và health check) yêu cầu header `Authorization: Bearer <access token>`; thiếu hoặc sai token ⇒ 401 ở Gateway và cả ở service. Identity ký token bằng RSA (RS256), khoá tự sinh và tự xoay vòng — không có secret nào trong `appsettings*.json` (ADR-012). Dữ liệu Drive/Search chỉ hiển thị với chủ sở hữu.
+
+Ví dụ qua Gateway (client không phải trình duyệt nhận refresh token trong body):
 
 ```bash
 curl -X POST http://localhost:5000/api/identity/v1/auth/register -H "Content-Type: application/json" -d '{"email":"a@example.com","password":"Passw0rd!","displayName":"A"}'
 ```
 
 ```bash
-curl -X POST http://localhost:5000/api/drive/v1/folders -H "Content-Type: application/json" -d '{"name":"Tài liệu"}'
+curl -X POST http://localhost:5000/api/identity/v1/auth/login -H "Content-Type: application/json" -d '{"email":"a@example.com","password":"Passw0rd!","refreshTokenInBody":true}'
 ```
 
 ```bash
-curl http://localhost:5000/api/search/v1/folders
+curl -X POST http://localhost:5000/api/drive/v1/folders -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" -d '{"name":"Tài liệu"}'
 ```
+
+```bash
+curl http://localhost:5000/api/search/v1/folders -H "Authorization: Bearer <accessToken>"
+```
+
+Trên Scalar (`/scalar` của từng service), bấm **Authentication → Bearer** và dán access token.
+
+Giới hạn tần suất ở Gateway (cấu hình `RateLimiting` trong `src/Gateway/MyCloud.Gateway/appsettings.json`): đăng nhập/đăng ký 5 lần/phút/IP, refresh/logout 30 lần/phút/IP, API 100 request/giây/user.
 
 ## Cấu trúc
 
 ```
 src/
   Aspire/        MyCloud.AppHost (orchestration dev), MyCloud.ServiceDefaults (OTel, health, resilience)
-  BuildingBlocks/ Domain | Application (MediatR pipeline) | Messaging (MassTransit + outbox) | Grpc | Web
+  BuildingBlocks/ Domain | Application (MediatR pipeline) | Messaging (MassTransit + outbox) | Grpc
+                 | Authentication (JWT RS256 qua JWKS) | Web (ProblemDetails, versioning, OpenAPI, Carter)
   Contracts/     MyCloud.Contracts.Events (integration event) | Protos (gRPC, buf)
-  Gateway/       MyCloud.Gateway (YARP)
+  Gateway/       MyCloud.Gateway (YARP, xác thực, rate limit, correlation id)
   Services/      Identity | Drive (4 lớp) | Search | Storage | Sharing | Notification | Media (worker)
-tests/           Drive.Domain.Tests | Drive.IntegrationTests (Testcontainers) | Architecture.Tests
+tests/           Drive.Domain.Tests | Drive.IntegrationTests | Identity.IntegrationTests (Testcontainers)
+                 | Gateway.Tests | Architecture.Tests
 ```
 
 ## Lệnh thường dùng

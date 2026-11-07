@@ -2,16 +2,21 @@ using System.Reflection;
 using Asp.Versioning;
 using Carter;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MyCloud.BuildingBlocks.Application.Abstractions;
+using MyCloud.BuildingBlocks.Authentication;
 using Scalar.AspNetCore;
 
 namespace MyCloud.BuildingBlocks.Web;
 
 public static class WebApiExtensions
 {
-    /// <summary>ProblemDetails, xử lý exception, ICurrentUser, API versioning, OpenAPI và Carter.</summary>
+    /// <summary>
+    /// ProblemDetails, xử lý exception, xác thực JWT (mặc định mọi endpoint yêu cầu đăng nhập), ICurrentUser,
+    /// API versioning, OpenAPI và Carter.
+    /// </summary>
     /// <param name="builder">Host builder.</param>
     /// <param name="endpointsAssembly">
     /// Assembly chứa các ICarterModule của service. Phải đăng ký tường minh: Carter mặc định chỉ quét
@@ -27,6 +32,8 @@ public static class WebApiExtensions
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
 
+        builder.AddJwtAuthentication();
+
         services
             .AddApiVersioning(o =>
             {
@@ -38,7 +45,7 @@ public static class WebApiExtensions
                 o.GroupNameFormat = "'v'VVV";
                 o.SubstituteApiVersionInUrl = true;
             })
-            .AddOpenApi(); // mỗi API version một tài liệu OpenAPI: /openapi/v1.json
+            .AddOpenApi(o => o.Document.AddDocumentTransformer<BearerSecuritySchemeTransformer>()); // /openapi/v1.json
 
         Type[] modules = endpointsAssembly.GetTypes()
             .Where(t => t is { IsClass: true, IsAbstract: false } && typeof(ICarterModule).IsAssignableFrom(t))
@@ -53,13 +60,15 @@ public static class WebApiExtensions
     {
         app.UseExceptionHandler();
         app.UseStatusCodePages();
+        app.UseAuthentication();
+        app.UseAuthorization();
 
         app.MapCarter();
 
         if (app.Environment.IsDevelopment())
         {
-            app.MapOpenApi().WithDocumentPerVersion();
-            app.MapScalarApiReference(); // UI: /scalar
+            app.MapOpenApi().WithDocumentPerVersion().AllowAnonymous();
+            app.MapScalarApiReference().AllowAnonymous(); // UI: /scalar
         }
 
         return app;

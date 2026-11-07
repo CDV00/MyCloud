@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-  <!-- Phase 0: 1 project. Phase 1 tách thành Api/Application/Domain/Infrastructure khi làm refresh token, RS256 + JWKS. -->
+  <!--
+    Một project, chia theo tính năng (Auth, Users, Tokens, Keys, Data). Identity chủ yếu là glue với ASP.NET Core Identity,
+    không có domain logic đáng kể để tách 4 tầng như Drive — xem docs/07, mục "Lệch so với kế hoạch" của Phase 1.
+  -->
   <PropertyGroup>
     <UserSecretsId>mycloud-identity-api</UserSecretsId>
   </PropertyGroup>
@@ -8,7 +11,7 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="EFCore.NamingConventions" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

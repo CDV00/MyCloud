@@ -20,5 +20,6 @@ internal sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(x => x.ParentId);
+        builder.HasIndex(x => new { x.OwnerId, x.ParentId });
     }
 }

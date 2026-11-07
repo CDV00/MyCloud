@@ -5,5 +5,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Aspire\MyCloud.ServiceDefaults\MyCloud.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\MyCloud.BuildingBlocks.Authentication\MyCloud.BuildingBlocks.Authentication.csproj" />
   </ItemGroup>
 </Project>

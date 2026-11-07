@@ -2,6 +2,7 @@ using Drive.Domain.Entities;
 using Drive.Domain.Exceptions;
 using Drive.Domain.Repositories;
 using FluentValidation;
+using MyCloud.BuildingBlocks.Application.Abstractions;
 using MyCloud.BuildingBlocks.Application.Messaging;
 using MyCloud.BuildingBlocks.Domain.Results;
 
@@ -19,14 +20,16 @@ internal sealed class UpdateFolderCommandValidator : AbstractValidator<UpdateFol
     }
 }
 
-internal sealed class UpdateFolderCommandHandler(IFolderRepository folders) : ICommandHandler<UpdateFolderCommand>
+internal sealed class UpdateFolderCommandHandler(IFolderRepository folders, ICurrentUser currentUser) : ICommandHandler<UpdateFolderCommand>
 {
     public async Task<Result> Handle(UpdateFolderCommand request, CancellationToken cancellationToken)
     {
-        Folder folder = await folders.FindByIdAsync(request.Id, cancellationToken)
+        Guid ownerId = currentUser.GetRequiredUserId();
+        Folder folder = await folders.FindOwnedAsync(request.Id, ownerId, cancellationToken)
             ?? throw new FolderException.NotFound(request.Id);
 
-        if (request.ParentId is { } parentId && parentId != folder.Id && !await folders.ExistsAsync(parentId, cancellationToken))
+        if (request.ParentId is { } parentId && parentId != folder.Id
+            && !await folders.ExistsOwnedAsync(parentId, ownerId, cancellationToken))
         {
             throw new FolderException.NotFound(parentId);
         }

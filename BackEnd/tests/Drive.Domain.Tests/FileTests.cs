@@ -6,20 +6,22 @@ namespace Drive.Domain.Tests;
 
 public sealed class FileTests
 {
+    private static readonly Guid Owner = Guid.NewGuid();
+
     private static DriveFile NewFile() =>
-        DriveFile.Create(Guid.NewGuid(), "report.pdf", "0123456789abcdef0123456789abcdef", "application/pdf", 1024, null, Guid.NewGuid());
+        DriveFile.Create(Guid.NewGuid(), Owner, "report.pdf", "0123456789abcdef0123456789abcdef", "application/pdf", 1024, null, Guid.NewGuid());
 
     [Fact]
     public void Create_WithoutContent_Throws()
     {
         Should.Throw<FileException.MissingContent>(() =>
-            DriveFile.Create(Guid.NewGuid(), "a.txt", storageKey: "", "text/plain", 1, null, Guid.NewGuid()));
+            DriveFile.Create(Guid.NewGuid(), Owner, "a.txt", storageKey: "", "text/plain", 1, null, Guid.NewGuid()));
     }
 
     [Fact]
     public void Create_EmptyContentType_DefaultsToOctetStream()
     {
-        var file = DriveFile.Create(Guid.NewGuid(), "a.bin", "0123456789abcdef0123456789abcdef", "", 1, null, Guid.NewGuid());
+        var file = DriveFile.Create(Guid.NewGuid(), Owner, "a.bin", "0123456789abcdef0123456789abcdef", "", 1, null, Guid.NewGuid());
 
         file.ContentType.ShouldBe("application/octet-stream");
     }

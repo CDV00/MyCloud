@@ -60,7 +60,7 @@ builder.Build().Run();
 |---|---|---|
 | Connection string, endpoint | Aspire tự inject (`ConnectionStrings__drive`...) | Biến môi trường / ConfigMap |
 | Bí mật (DB password, MinIO key, SMTP) | `dotnet user-secrets` | Kubernetes Secret (+ External Secrets / Vault) |
-| Khoá ký JWT | Sinh tự động khi dev | Key RSA lưu Secret/Key Vault, xoay vòng 90 ngày, JWKS trả cả key cũ |
+| Khoá ký JWT | Identity tự sinh RSA 2048, lưu bảng `signing_keys` (private key mã hoá bằng Data Protection), xoay vòng 90 ngày, JWKS trả cả key cũ (ADR-012) | Như dev, **thêm**: bảo vệ key ring của Data Protection bằng certificate / Key Vault (`ProtectKeysWith...`) |
 
 **Không** commit bất kỳ secret nào. Thêm `gitleaks` vào CI. Key `oEZqUKrr...` đã nằm trong lịch sử git ⇒ coi như lộ, không dùng lại.
 
@@ -68,10 +68,10 @@ builder.Build().Run();
 
 | Chủ đề | Biện pháp |
 |---|---|
-| Xác thực | JWT RS256, validate ở Gateway **và** từng service (`ValidateIssuer/Audience/Lifetime`, `ClockSkew` 30 s) |
+| Xác thực | JWT RS256, validate ở Gateway **và** từng service (`ValidateIssuer/Audience/Lifetime`, `ClockSkew` 30 s). Mặc định mọi endpoint yêu cầu đăng nhập (fallback policy); endpoint công khai phải ghi `AllowAnonymous()` |
 | Phân quyền | Mọi endpoint item đi qua `IItemAuthorizer` (fast-path chủ sở hữu → Sharing). Test tích hợp bắt buộc: user B không đọc/sửa/xoá được item của A (IDOR) |
 | Mật khẩu | ASP.NET Core Identity (PBKDF2), tối thiểu 8 ký tự, lockout 5 lần/15 phút, rate-limit login theo IP + email |
-| Refresh token | Lưu hash, rotation, phát hiện reuse, cookie `HttpOnly; Secure; SameSite=Strict` |
+| Refresh token | 256 bit ngẫu nhiên, lưu hash SHA-256, 30 ngày, rotation; dùng lại token cũ ⇒ thu hồi cả family (cho phép 10 s cho request đồng thời); cookie `HttpOnly; Secure; SameSite=Strict; Path=/api/identity/v1/auth`. Access token chỉ giữ trong bộ nhớ của SPA (ADR-012) |
 | Object storage | Bucket private; presigned URL ngắn hạn (PUT 1 h, GET 5 phút); object key ngẫu nhiên; `Content-Disposition: attachment` với file không an toàn để tránh XSS khi mở trực tiếp (HTML/SVG) |
 | Upload | Giới hạn size, kiểm tra size thật sau upload, (tuỳ chọn) quét ClamAV, không tin `Content-Type` từ client cho preview |
 | Link chia sẻ | Token 256-bit, lưu hash, có hạn, có thể đặt mật khẩu, thu hồi được |

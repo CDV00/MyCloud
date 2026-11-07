@@ -64,21 +64,27 @@ Sửa thêm trong Phase 0 (vì code được chuyển sang cấu trúc mới): b
 ## Phase 1 — Identity, Gateway, Web nền (≈ 2 tuần)
 
 **Backend**
-- [ ] Identity: register / login / refresh (rotation + phát hiện reuse) / logout / `users/me` / đổi mật khẩu. Sửa bug `Register` (map null), bỏ role hard-code, thông báo lỗi không lộ user.
-- [ ] Rút gọn `AppUser` (bỏ trường HR), thêm `DisplayName`, `AvatarUrl`.
-- [ ] JWT **RS256** + endpoint JWKS; key rotation cơ bản.
-- [ ] Publish `UserRegistered` qua outbox.
-- [ ] gRPC `UserService` (`GetUser`, `BatchGetUsers`, `FindUserByEmail`).
-- [ ] `BuildingBlocks.Web`: cấu hình JWT bearer từ JWKS, `ICurrentUser`, ProblemDetails, Carter + versioning.
-- [ ] Gateway: bật authentication, route `/api/{service}/**`, CORS theo cấu hình, rate limit (login chặt), `X-Correlation-Id`, xoá header nội bộ từ client.
+- [x] Identity: register / login / refresh (rotation + phát hiện reuse) / logout / `users/me` (GET, PATCH) / đổi mật khẩu (thu hồi mọi phiên). Thông báo lỗi đăng nhập không lộ user.
+- [x] Rút gọn `AppUser` (bỏ trường HR), thêm `DisplayName`, `AvatarUrl` *(làm từ Phase 0)*.
+- [x] JWT **RS256** + `/.well-known/openid-configuration` + `/.well-known/jwks.json`; xoay vòng khoá tự động (ADR-012).
+- [x] Publish `UserRegistered`, `UserProfileChanged` qua outbox.
+- [x] `BuildingBlocks.Authentication` (mới): JWT bearer lấy khoá từ JWKS qua service discovery, **fallback policy yêu cầu đăng nhập** cho mọi endpoint. `BuildingBlocks.Web` dùng lại; thêm `ICurrentUser.GetRequiredUserId()`.
+- [x] Gateway: xác thực theo route (`/auth/*` ẩn danh), rate limit (login/register 5/phút/IP, refresh/logout 30/phút/IP, API 100 req/s/user), `X-Correlation-Id`, xoá header nội bộ (`X-User-Id`, `X-Internal-*`), body tối đa 1 MB.
+- [x] Drive + Search: dữ liệu cách ly theo chủ sở hữu (`OwnerId`); item của người khác ⇒ 404. *(Kéo từ Phase 2 lên: bật xác thực mà không lọc theo user sẽ mở lỗ hổng IDOR.)*
 
 **Frontend**
-- [ ] Tạo `FrontEnd/web`: Vite + React + TypeScript, ESLint, Prettier, Vitest.
-- [ ] Port layout cũ (`Home`, `home.scss`, menu điều hướng) sang TS + MUI.
-- [ ] Trang đăng nhập/đăng ký thật; API client (fetch/axios) có interceptor tự refresh token; `ProtectedRoute` dựa trên trạng thái auth thật.
-- [ ] TanStack Query cho data fetching.
+- [x] Tạo `FrontEnd/web`: Vite 6 + React 19 + TypeScript, ESLint, Prettier, Vitest; xoá app CRA cũ `my-drive`.
+- [x] Port layout cũ (header, menu điều hướng, nút "Mới") sang TS + MUI; mục chưa làm hiển thị phase sẽ làm.
+- [x] Trang đăng nhập / đăng ký / quản lý tài khoản thật; API client tự refresh khi gặp 401 (nhiều request dùng chung một lần refresh); `ProtectedRoute` dựa trên trạng thái thật (khôi phục phiên từ cookie khi tải trang).
+- [x] TanStack Query; "Drive của tôi" bản tối thiểu (liệt kê, mở thư mục, tạo thư mục).
+- [x] Aspire chạy cả web (`AddViteApp`); Vite proxy `/api` → Gateway nên SPA và API cùng origin. CI riêng `frontend-ci.yml`.
 
-**Test**: integration Identity (đăng ký trùng email, sai mật khẩu, lockout, refresh reuse).
+**Test**: integration Identity (14 test: JWKS, cookie, trùng email, sai mật khẩu, lockout, refresh rotation, dùng lại token ⇒ thu hồi family, logout, đổi mật khẩu); Drive (IDOR, 401 khi thiếu / sai chữ ký / hết hạn token); Gateway (401, rate limit 429, correlation id); frontend 22 test (Vitest).
+
+**Lệch so với kế hoạch**
+- gRPC `UserService` và `GET /users/lookup`, `/users:batchGet` dời sang **Phase 4**: người gọi duy nhất là Sharing, làm khi có người dùng thật. Nền tảng gRPC (endpoint HTTP/2 riêng) làm ở Phase 2 cùng lời gọi Drive → Storage.
+- Identity vẫn là **1 project** (chia thư mục Auth / Users / Tokens / Keys / Data): logic chủ yếu là glue với ASP.NET Core Identity, tách 4 tầng không đem lại gì.
+- Node.js trên máy dev là 20.18 (đã hết hỗ trợ 04/2026) nên chọn Vite 6, ESLint 9, React Router 7 thay vì bản mới nhất (cần Node ≥ 20.19 / 22). CI chạy Node 24. **Nên nâng máy dev lên Node 24 LTS** rồi nâng các gói này.
 
 **Hoàn thành khi**: đăng ký + đăng nhập từ web; mọi API không có token → 401; refresh hoạt động sau 15 phút.
 

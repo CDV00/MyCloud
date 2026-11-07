@@ -12,5 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MyCloud.BuildingBlocks.Application\MyCloud.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="..\MyCloud.BuildingBlocks.Authentication\MyCloud.BuildingBlocks.Authentication.csproj" />
   </ItemGroup>
 </Project>

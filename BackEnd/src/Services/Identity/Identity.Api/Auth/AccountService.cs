@@ -1,28 +1,36 @@
 using Identity.Api.Data;
+using Identity.Api.Tokens;
+using Identity.Api.Users;
 using MassTransit;
 using Microsoft.AspNetCore.Identity;
 using MyCloud.BuildingBlocks.Domain.Results;
 using MyCloud.Contracts.Events.Identity;
+using ValidationResult = MyCloud.BuildingBlocks.Domain.Results.ValidationResult;
 
 namespace Identity.Api.Auth;
 
-public sealed record RegisterRequest(string Email, string Password, string DisplayName);
-
-public sealed record LoginRequest(string Email, string Password);
-
-public sealed record TokenResponse(string AccessToken, string TokenType, int ExpiresIn);
+public sealed record TokenPair(AccessToken AccessToken, IssuedRefreshToken RefreshToken);
 
 public static class IdentityErrors
 {
     public static readonly Error EmailTaken = new("IDENTITY.EMAIL_TAKEN", "An account with this email already exists.");
 
-    // Thông báo chung cho mọi lỗi đăng nhập: không tiết lộ email có tồn tại hay không (lỗi S9 của bản cũ).
+    // Thông báo chung cho mọi lỗi đăng nhập: không tiết lộ email có tồn tại / bị khoá hay không (lỗi S9 của bản cũ).
     public static readonly Error InvalidCredentials = new("IDENTITY.INVALID_CREDENTIALS", "Invalid email or password.");
+
+    public static readonly Error InvalidRefreshToken = new("IDENTITY.INVALID_REFRESH_TOKEN", "The session has expired. Please sign in again.");
+
+    public static readonly Error PasswordMismatch = new("IDENTITY.PASSWORD_MISMATCH", "The current password is incorrect.");
+
+    public static readonly Error UserNotFound = new("IDENTITY.USER_NOT_FOUND", "The user does not exist.");
 }
 
+/// <summary>Đăng ký, đăng nhập, refresh, đăng xuất, đổi mật khẩu.</summary>
 public sealed class AccountService(
     UserManager<AppUser> userManager,
-    JwtTokenService tokenService,
+    AppIdentityDbContext db,
+    AccessTokenService accessTokens,
+    RefreshTokenService refreshTokens,
     IPublishEndpoint publishEndpoint,
     TimeProvider timeProvider)
 {
@@ -33,7 +41,6 @@ public sealed class AccountService(
             return Result.Failure<Guid>(IdentityErrors.EmailTaken);
         }
 
-        // Sửa lỗi S8: bản cũ map vào biến null rồi gọi CreateAsync(null).
         var user = new AppUser
         {
             Id = Guid.CreateVersion7(),
@@ -47,35 +54,84 @@ public sealed class AccountService(
         await publishEndpoint.Publish(new UserRegistered(user.Id, user.Email, user.DisplayName), cancellationToken);
 
         IdentityResult result = await userManager.CreateAsync(user, request.Password);
-        if (!result.Succeeded)
-        {
-            Error[] errors = result.Errors.Select(e => new Error($"IDENTITY.{e.Code}", e.Description)).ToArray();
-            return ValidationResult<Guid>.WithErrors(errors);
-        }
-
-        return user.Id;
+        return result.Succeeded ? user.Id : ToValidationResult<Guid>(result);
     }
 
-    public async Task<Result<TokenResponse>> LoginAsync(LoginRequest request)
+    public async Task<Result<TokenPair>> LoginAsync(LoginRequest request, ClientInfo client, CancellationToken cancellationToken)
     {
         AppUser? user = await userManager.FindByEmailAsync(request.Email);
         if (user is null || await userManager.IsLockedOutAsync(user))
         {
-            return Result.Failure<TokenResponse>(IdentityErrors.InvalidCredentials);
+            return Result.Failure<TokenPair>(IdentityErrors.InvalidCredentials);
         }
 
         if (!await userManager.CheckPasswordAsync(user, request.Password))
         {
-            await userManager.AccessFailedAsync(user);
-            return Result.Failure<TokenResponse>(IdentityErrors.InvalidCredentials);
+            await userManager.AccessFailedAsync(user); // đủ 5 lần ⇒ khoá 15 phút
+            return Result.Failure<TokenPair>(IdentityErrors.InvalidCredentials);
         }
 
         await userManager.ResetAccessFailedCountAsync(user);
 
-        AccessToken token = tokenService.CreateAccessToken(user);
-        int expiresIn = (int)(token.ExpiresAt - timeProvider.GetUtcNow()).TotalSeconds;
+        IssuedRefreshToken refresh = refreshTokens.Issue(user.Id, familyId: null, client);
+        await db.SaveChangesAsync(cancellationToken);
 
-        // Refresh token (lưu hash + rotation) được làm ở Phase 1.
-        return new TokenResponse(token.Token, "Bearer", expiresIn);
+        return new TokenPair(accessTokens.Create(user), refresh);
     }
+
+    public async Task<Result<TokenPair>> RefreshAsync(string refreshToken, ClientInfo client, CancellationToken cancellationToken)
+    {
+        RefreshToken? current = await refreshTokens.FindForRotationAsync(refreshToken, cancellationToken);
+        if (current is null)
+        {
+            return Result.Failure<TokenPair>(IdentityErrors.InvalidRefreshToken);
+        }
+
+        AppUser? user = await userManager.FindByIdAsync(current.UserId.ToString());
+        if (user is null || await userManager.IsLockedOutAsync(user))
+        {
+            await refreshTokens.RevokeFamilyAsync(current.FamilyId, RevocationReasons.UserUnavailable, cancellationToken);
+            return Result.Failure<TokenPair>(IdentityErrors.InvalidRefreshToken);
+        }
+
+        IssuedRefreshToken next = refreshTokens.Rotate(current, client);
+        await db.SaveChangesAsync(cancellationToken);
+
+        return new TokenPair(accessTokens.Create(user), next);
+    }
+
+    public Task LogoutAsync(string? refreshToken, CancellationToken cancellationToken) =>
+        refreshToken is null
+            ? Task.CompletedTask
+            : refreshTokens.RevokeFamilyOfAsync(refreshToken, RevocationReasons.Logout, cancellationToken);
+
+    /// <summary>Đổi mật khẩu và đăng xuất mọi phiên (thu hồi mọi refresh token).</summary>
+    public async Task<Result> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken)
+    {
+        AppUser? user = await userManager.FindByIdAsync(userId.ToString());
+        if (user is null)
+        {
+            return Result.Failure(IdentityErrors.UserNotFound);
+        }
+
+        IdentityResult result = await userManager.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
+        if (!result.Succeeded)
+        {
+            return result.Errors.Any(e => e.Code == nameof(IdentityErrorDescriber.PasswordMismatch))
+                ? Result.Failure(IdentityErrors.PasswordMismatch)
+                : ToValidationResult(result);
+        }
+
+        await refreshTokens.RevokeAllForUserAsync(user.Id, RevocationReasons.PasswordChanged, cancellationToken);
+        return Result.Success();
+    }
+
+    private static ValidationResult<T> ToValidationResult<T>(IdentityResult result) =>
+        ValidationResult<T>.WithErrors(ToErrors(result));
+
+    private static ValidationResult ToValidationResult(IdentityResult result) =>
+        ValidationResult.WithErrors(ToErrors(result));
+
+    private static Error[] ToErrors(IdentityResult result) =>
+        result.Errors.Select(e => new Error($"IDENTITY.{e.Code}", e.Description)).ToArray();
 }

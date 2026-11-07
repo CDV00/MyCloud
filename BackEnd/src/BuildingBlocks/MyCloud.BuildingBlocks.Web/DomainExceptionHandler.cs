@@ -19,6 +19,7 @@ internal sealed class DomainExceptionHandler(IProblemDetailsService problemDetai
             ConflictException e => (StatusCodes.Status409Conflict, e.Title, e.Message),
             DomainException e => (StatusCodes.Status400BadRequest, e.Title, e.Message),
             BadHttpRequestException e => (e.StatusCode, "Bad Request", e.Message),
+            UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, "Unauthorized", null),
             _ => (StatusCodes.Status500InternalServerError, "Server Error", null),
         };
 

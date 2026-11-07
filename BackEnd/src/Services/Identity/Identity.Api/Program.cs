@@ -1,6 +1,8 @@
 using FluentValidation;
 using Identity.Api.Auth;
 using Identity.Api.Data;
+using Identity.Api.Keys;
+using Identity.Api.Tokens;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MyCloud.BuildingBlocks.Messaging;
@@ -28,14 +30,7 @@ builder.Services
     })
     .AddEntityFrameworkStores<AppIdentityDbContext>();
 
-builder.Services.AddOptions<JwtOptions>()
-    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
-    .ValidateDataAnnotations()
-    .ValidateOnStart();
-
-builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<JwtTokenService>();
-builder.Services.AddScoped<AccountService>();
+builder.AddTokenServices();
 builder.Services.AddValidatorsFromAssemblyContaining<AuthEndpoints>(includeInternalTypes: true);
 
 var app = builder.Build();
@@ -48,6 +43,9 @@ if (app.Environment.IsDevelopment())
     await using var scope = app.Services.CreateAsyncScope();
     await scope.ServiceProvider.GetRequiredService<AppIdentityDbContext>().Database.MigrateAsync();
 }
+
+// Nạp (hoặc tạo lần đầu) khoá ký trước khi nhận request.
+await app.Services.GetRequiredService<SigningKeyStore>().ReloadAsync(CancellationToken.None);
 
 await app.RunAsync();
 

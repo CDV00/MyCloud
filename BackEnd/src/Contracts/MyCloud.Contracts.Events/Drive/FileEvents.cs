@@ -4,6 +4,7 @@ namespace MyCloud.Contracts.Events.Drive;
 
 public sealed record FileCreated(
     Guid FileId,
+    Guid OwnerId,
     string Name,
     string ContentType,
     long SizeBytes,
@@ -13,6 +14,7 @@ public sealed record FileCreated(
 
 public sealed record FileUpdated(
     Guid FileId,
+    Guid OwnerId,
     string Name,
     string ContentType,
     long SizeBytes,

@@ -21,12 +21,19 @@ internal class Repository<TAggregate>(DriveDbContext db) : IRepository<TAggregat
 
 internal sealed class FolderRepository(DriveDbContext db) : Repository<Folder>(db), IFolderRepository
 {
-    public Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default) =>
-        Db.Folders.AnyAsync(x => x.Id == id, cancellationToken);
+    public Task<Folder?> FindOwnedAsync(Guid id, Guid ownerId, CancellationToken cancellationToken = default) =>
+        Db.Folders.SingleOrDefaultAsync(x => x.Id == id && x.OwnerId == ownerId, cancellationToken);
+
+    public Task<bool> ExistsOwnedAsync(Guid id, Guid ownerId, CancellationToken cancellationToken = default) =>
+        Db.Folders.AnyAsync(x => x.Id == id && x.OwnerId == ownerId, cancellationToken);
 
     public async Task<bool> HasChildrenAsync(Guid id, CancellationToken cancellationToken = default) =>
         await Db.Folders.AnyAsync(x => x.ParentId == id, cancellationToken)
         || await Db.Files.AnyAsync(x => x.FolderId == id, cancellationToken);
 }
 
-internal sealed class FileRepository(DriveDbContext db) : Repository<DriveFile>(db), IFileRepository;
+internal sealed class FileRepository(DriveDbContext db) : Repository<DriveFile>(db), IFileRepository
+{
+    public Task<DriveFile?> FindOwnedAsync(Guid id, Guid ownerId, CancellationToken cancellationToken = default) =>
+        Db.Files.SingleOrDefaultAsync(x => x.Id == id && x.OwnerId == ownerId, cancellationToken);
+}
