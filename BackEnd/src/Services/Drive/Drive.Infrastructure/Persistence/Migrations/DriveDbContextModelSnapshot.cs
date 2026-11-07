@@ -22,17 +22,11 @@ namespace Drive.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Drive.Domain.Entities.File", b =>
+            modelBuilder.Entity("Drive.Domain.Items.DriveItem", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("content_type");
 
                     b.Property<Guid>("CreatedBy")
                         .HasColumnType("uuid")
@@ -42,15 +36,26 @@ namespace Drive.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_on_utc");
 
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("description");
-
-                    b.Property<Guid>("FolderId")
+                    b.Property<Guid?>("CurrentVersionId")
                         .HasColumnType("uuid")
-                        .HasColumnName("folder_id");
+                        .HasColumnName("current_version_id");
+
+                    b.Property<int>("Depth")
+                        .HasColumnType("integer")
+                        .HasColumnName("depth");
+
+                    b.Property<bool>("IsRoot")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_root");
+
+                    b.Property<short>("Kind")
+                        .HasColumnType("smallint")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("MimeType")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("mime_type");
 
                     b.Property<Guid?>("ModifiedBy")
                         .HasColumnType("uuid")
@@ -66,65 +71,11 @@ namespace Drive.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("name");
 
-                    b.Property<Guid>("OwnerId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("owner_id");
-
-                    b.Property<long>("SizeBytes")
-                        .HasColumnType("bigint")
-                        .HasColumnName("size_bytes");
-
-                    b.Property<string>("StorageKey")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("storage_key");
-
-                    b.HasKey("Id")
-                        .HasName("pk_files");
-
-                    b.HasIndex("FolderId")
-                        .HasDatabaseName("ix_files_folder_id");
-
-                    b.HasIndex("OwnerId", "FolderId")
-                        .HasDatabaseName("ix_files_owner_id_folder_id");
-
-                    b.ToTable("files", (string)null);
-                });
-
-            modelBuilder.Entity("Drive.Domain.Entities.Folder", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("CreatedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by");
-
-                    b.Property<DateTimeOffset>("CreatedOnUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_on_utc");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("description");
-
-                    b.Property<Guid?>("ModifiedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("modified_by");
-
-                    b.Property<DateTimeOffset?>("ModifiedOnUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("modified_on_utc");
-
-                    b.Property<string>("Name")
+                    b.Property<string>("NameKey")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
-                        .HasColumnName("name");
+                        .HasColumnName("name_key");
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")
@@ -134,16 +85,149 @@ namespace Drive.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("parent_id");
 
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("path");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
                     b.HasKey("Id")
-                        .HasName("pk_folders");
+                        .HasName("pk_items");
 
-                    b.HasIndex("ParentId")
-                        .HasDatabaseName("ix_folders_parent_id");
+                    b.HasIndex("OwnerId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_items_owner_root")
+                        .HasFilter("parent_id IS NULL");
 
-                    b.HasIndex("OwnerId", "ParentId")
-                        .HasDatabaseName("ix_folders_owner_id_parent_id");
+                    b.HasIndex("Path")
+                        .HasDatabaseName("ix_items_path");
 
-                    b.ToTable("folders", (string)null);
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Path"), new[] { "text_pattern_ops" });
+
+                    b.HasIndex("ParentId", "NameKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_items_parent_id_name_key");
+
+                    b.HasIndex("ParentId", "Kind", "NameKey")
+                        .HasDatabaseName("ix_items_parent_id_kind_name_key");
+
+                    b.ToTable("items", (string)null);
+                });
+
+            modelBuilder.Entity("Drive.Domain.Items.FileVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BlobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("blob_id");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_on_utc");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("mime_type");
+
+                    b.Property<Guid?>("ModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modified_by");
+
+                    b.Property<DateTimeOffset?>("ModifiedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_on_utc");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<int>("VersionNo")
+                        .HasColumnType("integer")
+                        .HasColumnName("version_no");
+
+                    b.HasKey("Id")
+                        .HasName("pk_file_versions");
+
+                    b.HasIndex("BlobId")
+                        .HasDatabaseName("ix_file_versions_blob_id");
+
+                    b.HasIndex("ItemId", "VersionNo")
+                        .IsUnique()
+                        .HasDatabaseName("ix_file_versions_item_id_version_no");
+
+                    b.ToTable("file_versions", (string)null);
+                });
+
+            modelBuilder.Entity("Drive.Domain.Uploads.PendingUpload", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CompletedItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("completed_item_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("mime_type");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<Guid>("ParentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_id");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.HasKey("Id")
+                        .HasName("pk_pending_uploads");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("ix_pending_uploads_expires_at");
+
+                    b.ToTable("pending_uploads", (string)null);
                 });
 
             modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.InboxState", b =>
@@ -364,23 +448,23 @@ namespace Drive.Infrastructure.Persistence.Migrations
                     b.ToTable("outbox_state", (string)null);
                 });
 
-            modelBuilder.Entity("Drive.Domain.Entities.File", b =>
+            modelBuilder.Entity("Drive.Domain.Items.DriveItem", b =>
                 {
-                    b.HasOne("Drive.Domain.Entities.Folder", null)
-                        .WithMany()
-                        .HasForeignKey("FolderId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_files_folders_folder_id");
-                });
-
-            modelBuilder.Entity("Drive.Domain.Entities.Folder", b =>
-                {
-                    b.HasOne("Drive.Domain.Entities.Folder", null)
+                    b.HasOne("Drive.Domain.Items.DriveItem", null)
                         .WithMany()
                         .HasForeignKey("ParentId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_folders_folders_parent_id");
+                        .HasConstraintName("fk_items_items_parent_id");
+                });
+
+            modelBuilder.Entity("Drive.Domain.Items.FileVersion", b =>
+                {
+                    b.HasOne("Drive.Domain.Items.DriveItem", null)
+                        .WithMany("Versions")
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_file_versions_items_item_id");
                 });
 
             modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.OutboxMessage", b =>
@@ -395,6 +479,11 @@ namespace Drive.Infrastructure.Persistence.Migrations
                         .HasForeignKey("InboxMessageId", "InboxConsumerId")
                         .HasPrincipalKey("MessageId", "ConsumerId")
                         .HasConstraintName("fk_outbox_message_inbox_state_inbox_message_id_inbox_consumer_");
+                });
+
+            modelBuilder.Entity("Drive.Domain.Items.DriveItem", b =>
+                {
+                    b.Navigation("Versions");
                 });
 #pragma warning restore 612, 618
         }

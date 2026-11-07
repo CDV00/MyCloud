@@ -155,3 +155,21 @@ Mỗi quyết định ghi: bối cảnh → quyết định → hệ quả. Tr�
 **Phương án đã loại**: lưu token trong `localStorage` (XSS đọc được token dài hạn); BFF giữ token phía server (an toàn hơn nữa nhưng thêm một thành phần có trạng thái — xem lại nếu làm đăng nhập Google/OIDC).
 
 **Hệ quả**: + Token lộ qua XSS chỉ sống tối đa 15 phút; refresh token bị đánh cắp rồi dùng lại sẽ bị phát hiện. + Thay Identity bằng Keycloak sau này không đổi Gateway/service (chuẩn JWKS). − Đổi mật khẩu thu hồi refresh token ngay nhưng access token đã phát hành còn hiệu lực tới khi hết hạn (≤ 15 phút). − Mất key ring của Data Protection ⇒ khoá ký cũ không đọc được, hệ thống tự tạo khoá mới và mọi người phải đăng nhập lại.
+
+---
+
+<a id="adr-013"></a>
+## ADR-013 — Presigned URL ký theo origin của trình duyệt, object storage đi cùng origin
+
+**Trạng thái**: Accepted (Phase 2). Bổ sung ADR-002, ADR-011.
+
+**Bối cảnh**: trình duyệt PUT/GET byte của file thẳng tới object storage bằng presigned URL (ADR-002). Chữ ký S3 V4 gồm cả **host**, nên URL phải được ký đúng địa chỉ mà trình duyệt gọi. Cùng một hệ thống được mở qua `localhost:5173` (Vite), `mycloud.localhost` (nginx) và `10.x.x.x:8081` (máy khác trong LAN); MinIO trong dev chỉ nghe trên `127.0.0.1`.
+
+**Quyết định**:
+- Object storage được **proxy cùng origin** với web app theo tiền tố đường dẫn là tên bucket (`/mycloud-blobs/...`, path-style): Vite proxy trong dev, nginx khi chạy qua tên miền / IP. Proxy giữ nguyên header `Host`.
+- Storage ký URL cho **gốc URL công khai của request** (`X-Forwarded-Proto/Host` do Gateway đặt, Drive truyền qua gRPC). Ký cho một host bất kỳ không mở thêm quyền: URL vẫn chỉ dùng được cho đúng object, đúng thao tác, trong thời hạn ngắn.
+- Production dùng S3/R2 thật (hoặc CDN): đặt `Storage:PublicBaseUrl` ⇒ mọi URL ký theo địa chỉ đó, bật CORS trên bucket cho origin của web app.
+- Lựa chọn object storage tự host lâu dài (ADR-011) **dời tới Phase 6** khi chốt hạ tầng triển khai: code chỉ dùng API S3 nên đổi MinIO ↔ SeaweedFS / Garage / S3 / R2 không phải sửa service.
+
+**Hệ quả**: + Không cần CORS ở dev, cookie và mọi request cùng origin; hoạt động qua localhost, tên miền và IP. + Byte của file vẫn không đi qua Gateway hay service .NET. − Khi tự host, băng thông upload/download đi qua reverse proxy (nginx), cần cấu hình không buffer và timeout phù hợp.
+

@@ -6,5 +6,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Services\Drive\Drive.Api\Drive.Api.csproj" />
+    <ProjectReference Include="..\MyCloud.Testing\MyCloud.Testing.csproj" />
   </ItemGroup>
 </Project>

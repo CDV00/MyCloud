@@ -5,6 +5,7 @@
   <ItemGroup>
     <PackageReference Include="Grpc.AspNetCore" />
     <PackageReference Include="Grpc.Net.ClientFactory" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MyCloud.BuildingBlocks.Domain\MyCloud.BuildingBlocks.Domain.csproj" />

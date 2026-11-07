@@ -10,7 +10,7 @@ builder.AddServiceDefaults();
 builder.AddJwtAuthentication(); // route không khai báo AuthorizationPolicy ⇒ yêu cầu đăng nhập (fallback policy)
 builder.AddGatewayRateLimiting();
 
-builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = GatewayLimits.DefaultMaxRequestBodyBytes);
+builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = GatewayLimits.MaxRequestBodyBytes);
 
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
@@ -28,7 +28,6 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p
 var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
-app.UseMiddleware<RequestBodyLimitMiddleware>();
 app.UseCors();
 app.UseAuthentication();
 app.UseRateLimiter(); // sau authentication: giới hạn theo user cho API thường

@@ -1,35 +1,12 @@
 using System.Diagnostics;
-using Microsoft.AspNetCore.Http.Features;
 using Yarp.ReverseProxy.Transforms;
 
 namespace MyCloud.Gateway;
 
 public static class GatewayLimits
 {
-    /// <summary>Body tối đa qua Gateway: file đi thẳng tới object storage bằng presigned URL (ADR-002).</summary>
-    public const long DefaultMaxRequestBodyBytes = 1L * 1024 * 1024;
-
-    /// <summary>
-    /// Tạm thời cho upload qua Drive (multipart, ≤ 100 MB) tới khi Phase 2 chuyển sang presigned URL.
-    /// </summary>
-    public const long LegacyUploadMaxRequestBodyBytes = 110L * 1024 * 1024;
-}
-
-/// <summary>Nâng giới hạn body riêng cho route upload cũ của Drive. Xoá ở Phase 2.</summary>
-public sealed class RequestBodyLimitMiddleware(RequestDelegate next)
-{
-    public Task InvokeAsync(HttpContext context)
-    {
-        if (HttpMethods.IsPost(context.Request.Method)
-            && context.Request.Path.StartsWithSegments("/api/drive", StringComparison.OrdinalIgnoreCase)
-            && context.Request.Path.Value!.EndsWith("/files", StringComparison.OrdinalIgnoreCase)
-            && context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
-        {
-            limit.MaxRequestBodySize = GatewayLimits.LegacyUploadMaxRequestBodyBytes;
-        }
-
-        return next(context);
-    }
+    /// <summary>Body tối đa qua Gateway: byte của file đi thẳng tới object storage bằng presigned URL (ADR-002).</summary>
+    public const long MaxRequestBodyBytes = 1L * 1024 * 1024;
 }
 
 public static class CorrelationId

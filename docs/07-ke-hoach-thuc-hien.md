@@ -92,36 +92,48 @@ Sửa thêm trong Phase 0 (vì code được chuyển sang cấu trúc mới): b
 
 ## Phase 2 — Drive + Storage + Upload/Download → **MVP** (≈ 4–5 tuần)
 
-**Drive service** (refactor từ `MyDrive.Command.*`)
-- [ ] Aggregate `DriveItem` + `FileVersion` (thay `Folder`/`File`), value object `ItemName`, `MaterializedPath`.
-- [ ] Schema Postgres + index (xem [03 §3](03-dac-ta-service.md#3-drive-service-trung-tâm)).
-- [ ] Consumer `UserRegistered` → tạo root; `GET /items/root` tạo-nếu-chưa-có.
-- [ ] Tạo thư mục, liệt kê con (cursor paging, sort, folder trước), breadcrumb, đổi tên (`If-Match`), di chuyển (update `path` cả cây, chặn di chuyển vào con cháu).
-- [ ] Phân quyền giai đoạn này: **chỉ chủ sở hữu** (`IItemAuthorizer` có sẵn interface để Phase 4 cắm Sharing vào).
-- [ ] Upload: `POST /uploads`, `:complete`, `DELETE`; bảng `pending_uploads`; xử lý trùng tên.
-- [ ] Download: `POST /items/{id}:downloadUrl`.
-- [ ] Publish `ItemCreated`, `ItemRenamed`, `ItemMoved`, `FileVersionAdded`.
+**Drive service** (thay mô hình Folder/File tạm thời)
+- [x] Aggregate `DriveItem` + `FileVersion`, `ItemName` (NFC + không phân biệt hoa thường), materialized path `/{root}/.../{id}/`.
+- [x] Schema Postgres + index: unique `(parent_id, name_key)`, `(parent_id, kind, name_key)`, `path text_pattern_ops`, một root mỗi user; `Revision` là concurrency token (lưu đè ⇒ 412).
+- [x] Consumer `UserRegistered` → tạo root; `GET /items/root` tạo-nếu-chưa-có (user đăng ký trước Phase 2).
+- [x] Tạo thư mục, liệt kê con (thư mục trước, sắp xếp theo tên / sửa đổi / kích thước, phân trang bằng page token), breadcrumb (`/ancestors`), đổi tên (`If-Match`), di chuyển (cập nhật path cả cây con bằng 1 câu UPDATE trong cùng transaction, chặn di chuyển vào con cháu).
+- [x] Phân quyền: chỉ chủ sở hữu, qua `IItemAuthorizer` (Phase 4 cắm Sharing vào); item của người khác ⇒ 404.
+- [x] Upload: `POST /uploads`, `POST /uploads/{id}/complete` (idempotent), `DELETE /uploads/{id}`; bảng `pending_uploads`; trùng tên ⇒ tự đổi `report (1).pdf`.
+- [x] Download: `POST /items/{id}/download-url` → presigned GET 5 phút, `Content-Disposition` giữ tên tiếng Việt (RFC 6266).
+- [x] Publish `ItemCreated`, `ItemRenamed`, `ItemMoved`, `FileVersionAdded` (có `Revision`, `AncestorIds`).
 
-**Storage service** (thay `MyDriver.BuildBlock.FTP`)
-- [ ] MinIO client (AWSSDK.S3 hoặc Minio SDK), tạo bucket khi khởi động, bucket policy private, lifecycle abort multipart.
-- [ ] Bảng `blobs`, `upload_sessions`, `quotas`; reserve/commit/release quota atomic.
-- [ ] gRPC `StorageService` (CreateUploadSession, SignUploadParts, CompleteUpload, AbortUpload, GetDownloadUrl, GetQuota).
-- [ ] REST `GET /uploads/{id}/parts`, `GET /quota`.
-- [ ] Consumer `UserRegistered` (quota), `FileVersionAdded` (claim).
-- [ ] Job: hết hạn session, GC blob không được claim.
+**Storage service**
+- [x] Client S3 chuẩn (AWSSDK.S3 v4), tạo bucket khi khởi động, bucket private, rule lifecycle abort multipart sau 7 ngày (best-effort).
+- [x] Bảng `blobs`, `quotas`; giữ chỗ / ghi nhận / trả quota bằng UPDATE có điều kiện (atomic), cùng transaction với trạng thái blob.
+- [x] gRPC `StorageService` (CreateUploadSession, SignUploadParts, CompleteUpload, AbortUpload, GetDownloadUrl, GetQuota) — kiểm tra kích thước thật sau upload (khai nhỏ upload lớn ⇒ xoá, trả quota).
+- [x] REST `GET /uploads/{id}/parts` (resume), `POST /uploads/{id}/part-urls`, `GET /quota`.
+- [x] Consumer `UserRegistered` (quota), `FileVersionAdded` (claim).
+- [x] Job: hết hạn upload session, GC blob không được claim sau 24 h.
 
 **gRPC nền tảng**
-- [ ] `BuildingBlocks.Grpc`: interceptor deadline, chuyển tiếp token, map lỗi ↔ `Result`, logging; endpoint Kestrel HTTP/2 riêng.
+- [x] `BuildingBlocks.Grpc`: deadline mặc định, chuyển tiếp JWT của người dùng, không retry tự động ở tầng HTTP, mã lỗi nghiệp vụ đi trong trailer `x-error-code`; endpoint Kestrel HTTP/2 riêng (`grpc`) phân giải qua service discovery `http://_grpc.storage`.
 
 **Frontend**
-- [ ] Trang "Drive của tôi": dạng lưới/danh sách, breadcrumb, sắp xếp, chọn nhiều.
-- [ ] Tạo thư mục, đổi tên, di chuyển (dialog chọn thư mục), menu chuột phải.
-- [ ] Upload bằng **Uppy + AwsS3 (multipart)** với endpoint tuỳ biến trỏ tới Drive/Storage; kéo thả; thanh tiến trình; resume.
-- [ ] Tải xuống; thanh dung lượng (quota).
+- [x] Trang "Drive của tôi": dạng danh sách / lưới, breadcrumb, sắp xếp, chọn nhiều (Ctrl/⌘ + click, checkbox).
+- [x] Tạo thư mục, đổi tên, di chuyển (hộp thoại duyệt cây), menu chuột phải.
+- [x] Upload multipart song song, kéo thả, bảng tiến độ, huỷ / thử lại, tự tiếp tục khi có mạng lại, ký lại URL hết hạn.
+- [x] Tải xuống; thanh dung lượng + trang Bộ nhớ.
 
 **Test**
-- [ ] Domain tests cho `DriveItem` (đổi tên, di chuyển, invariant).
-- [ ] Integration: upload end-to-end với MinIO Testcontainer; vượt quota; **IDOR** (user B truy cập item của A → 404).
+- [x] Domain tests cho `DriveItem`, `ItemName` (27).
+- [x] Integration Drive (19): cây thư mục, phân trang, 412 `If-Match`, di chuyển cả cây con, upload idempotent, đổi tên khi trùng, quota, **IDOR** (11 thao tác của user B trên dữ liệu A ⇒ 404).
+- [x] Integration Storage với **MinIO thật** (9): upload 2 part qua presigned URL rồi tải về khớp từng byte, vượt quota, sai kích thước, huỷ, resume, chặn user khác, job dọn dẹp + claim.
+- [x] Frontend: bộ upload multipart (7 test: song song, thử lại, 403 ⇒ ký lại, mất mạng, huỷ).
+
+**Lệch so với kế hoạch**
+- **Upload trình duyệt tự viết thay cho Uppy**: ~200 dòng, khớp thẳng API Drive/Storage, không thêm thư viện; resume trong cùng phiên (mất mạng / lỗi tạm thời). Resume sau khi tải lại trang chưa làm (API `GET /uploads/{id}/parts` đã có sẵn).
+- **Presigned URL ký theo origin của trình duyệt** và object storage được proxy cùng origin (`/mycloud-blobs/` qua Vite / nginx) — không cần CORS, chạy được qua localhost, `mycloud.localhost` và IP trong LAN (ADR-013).
+- `upload_sessions` gộp vào `blobs` (1 session ↔ 1 blob, cùng vòng đời).
+- Đường dẫn dùng `/uploads/{id}/complete`, `/items/{id}/move`, `/items/{id}/download-url` thay cho kiểu `:complete` (route template ASP.NET không hỗ trợ tốt dấu `:` sau tham số).
+- Page token hiện mã hoá vị trí (offset) — vẫn là chuỗi mờ với client, đổi sang keyset sau mà không đổi API.
+- `CopyBlob` dời sang Phase 3 (cùng chức năng sao chép); xoá / thùng rác ở Phase 3 như kế hoạch.
+- Search chuyển sang chiếu `Item*` event, kèm tìm theo tên đơn giản (`GET /search?q=`).
+- Dữ liệu Folder/File của Phase 0–1 (chỉ ở dev) không được chuyển đổi — migration xoá bảng cũ.
 
 **Hoàn thành khi (MVP)**: upload file 1 GB, ngắt mạng giữa chừng vẫn resume được; tạo/di chuyển/đổi tên thư mục; tải về đúng tên file; hai user hoàn toàn cách ly dữ liệu; trace một lần upload xem được trọn vẹn trên dashboard.
 

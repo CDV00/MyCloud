@@ -1,15 +1,16 @@
+using Drive.Domain.Items;
 using Drive.Infrastructure.Messaging;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using MyCloud.BuildingBlocks.Application.Abstractions;
 using MyCloud.BuildingBlocks.Domain.Primitives;
+using Npgsql;
 
 namespace Drive.Infrastructure.Persistence;
 
 /// <summary>
-/// Một lần SaveChanges = dữ liệu + audit + integration event.
-/// IPublishEndpoint ở đây là bus outbox của MassTransit: Publish chỉ thêm bản ghi vào bảng outbox
-/// của chính DbContext này, nên event được lưu cùng transaction với dữ liệu (thay outbox Quartz tự viết).
+/// Một lần lưu = dữ liệu + audit + integration event (bus outbox của MassTransit: Publish chỉ ghi vào bảng outbox của
+/// DbContext này) + các câu SQL hàng loạt đi kèm (cập nhật path cây con) — tất cả trong MỘT transaction.
 /// </summary>
 internal sealed class UnitOfWork(
     DriveDbContext db,
@@ -20,7 +21,54 @@ internal sealed class UnitOfWork(
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         ApplyAudit();
+        await PublishDomainEventsAsync(cancellationToken);
 
+        IReadOnlyList<FormattableString> afterSave = db.TakeAfterSave();
+        try
+        {
+            if (afterSave.Count == 0)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            // Aspire bật retry cho Npgsql ⇒ transaction tự mở phải chạy trong execution strategy.
+            await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+                foreach (FormattableString sql in afterSave)
+                {
+                    await db.Database.ExecuteSqlAsync(sql, cancellationToken);
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+            });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new DriveException.ConcurrentModification();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: DriveItemConfiguration.UniqueNameIndex,
+        })
+        {
+            // Hai thao tác đồng thời cùng lấy một tên — kiểm tra trước đó đều qua, ràng buộc DB chặn cái sau.
+            throw new DriveException.NameConflict(string.Empty);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: DriveItemConfiguration.UniqueRootIndex,
+        })
+        {
+            db.ChangeTracker.Clear();
+            throw new DriveException.RootCreatedConcurrently();
+        }
+    }
+
+    private async Task PublishDomainEventsAsync(CancellationToken cancellationToken)
+    {
         var aggregates = db.ChangeTracker.Entries<IAggregateRoot>().Select(e => e.Entity).ToList();
         foreach (IAggregateRoot aggregate in aggregates)
         {
@@ -35,13 +83,11 @@ internal sealed class UnitOfWork(
 
             aggregate.ClearDomainEvents();
         }
-
-        await db.SaveChangesAsync(cancellationToken);
     }
 
     private void ApplyAudit()
     {
-        // Bản cũ gán CreatedBy = Guid.NewGuid() (lỗi S2). Phase 1 bật JWT nên UserId sẽ luôn có giá trị.
+        // Consumer (không có người dùng) ghi lại người gây ra thay đổi trong payload event; ở đây dùng chủ sở hữu/Empty.
         Guid userId = currentUser.UserId ?? Guid.Empty;
         DateTimeOffset now = timeProvider.GetUtcNow();
 
@@ -50,7 +96,7 @@ internal sealed class UnitOfWork(
             if (entry.State == EntityState.Added)
             {
                 entry.Entity.CreatedOnUtc = now;
-                entry.Entity.CreatedBy = userId;
+                entry.Entity.CreatedBy = userId == Guid.Empty && entry.Entity is DriveItem item ? item.OwnerId : userId;
             }
             else if (entry.State == EntityState.Modified)
             {

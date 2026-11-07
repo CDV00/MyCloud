@@ -6,50 +6,39 @@ using MongoDB.Driver;
 
 namespace Search.Api.ReadModel;
 
-public sealed class FolderDocument
+/// <summary>Bản sao rút gọn của DriveItem để tìm kiếm (Phase 3 thêm "Gần đây", gắn sao, item được chia sẻ).</summary>
+public sealed class ItemDocument
 {
     [BsonId]
     public Guid Id { get; set; }
 
-    public string Name { get; set; } = string.Empty;
-
-    public string Description { get; set; } = string.Empty;
+    public Guid OwnerId { get; set; }
 
     public Guid? ParentId { get; set; }
 
-    public Guid OwnerId { get; set; }
-
-    /// <summary>Thời điểm của event mới nhất đã áp dụng — dùng để bỏ qua event đến muộn/sai thứ tự.</summary>
-    public DateTimeOffset UpdatedAt { get; set; }
-}
-
-public sealed class FileDocument
-{
-    [BsonId]
-    public Guid Id { get; set; }
+    /// <summary>"folder" | "file".</summary>
+    public string Kind { get; set; } = string.Empty;
 
     public string Name { get; set; } = string.Empty;
 
-    public string ContentType { get; set; } = string.Empty;
+    /// <summary>Tên chữ thường để tìm không phân biệt hoa thường.</summary>
+    public string NameLower { get; set; } = string.Empty;
+
+    public string? MimeType { get; set; }
 
     public long SizeBytes { get; set; }
 
-    public string Description { get; set; } = string.Empty;
-
-    public Guid FolderId { get; set; }
-
-    public Guid OwnerId { get; set; }
+    /// <summary>Revision của item trong Drive — chỉ áp dụng event có revision mới hơn (bỏ qua event cũ/lặp).</summary>
+    public long Revision { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
 public sealed class SearchDb(IMongoDatabase database)
 {
-    public IMongoCollection<FolderDocument> Folders { get; } = database.GetCollection<FolderDocument>("folders");
+    public IMongoCollection<ItemDocument> Items { get; } = database.GetCollection<ItemDocument>("items");
 
-    public IMongoCollection<FileDocument> Files { get; } = database.GetCollection<FileDocument>("files");
-
-    /// <summary>Guid lưu dạng UUID chuẩn; DateTimeOffset lưu dạng document có thể so sánh.</summary>
+    /// <summary>Guid lưu dạng UUID chuẩn; DateTimeOffset lưu dạng ngày giờ so sánh được.</summary>
     public static void RegisterSerializers()
     {
         BsonSerializer.TryRegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
@@ -58,12 +47,16 @@ public sealed class SearchDb(IMongoDatabase database)
 
     public async Task EnsureIndexesAsync(CancellationToken cancellationToken = default)
     {
-        // Mọi truy vấn đều lọc theo chủ sở hữu trước.
-        await Folders.Indexes.CreateOneAsync(
-            new CreateIndexModel<FolderDocument>(Builders<FolderDocument>.IndexKeys.Ascending(x => x.OwnerId).Ascending(x => x.ParentId)),
-            cancellationToken: cancellationToken);
-        await Files.Indexes.CreateOneAsync(
-            new CreateIndexModel<FileDocument>(Builders<FileDocument>.IndexKeys.Ascending(x => x.OwnerId).Ascending(x => x.FolderId)),
-            cancellationToken: cancellationToken);
+        var keys = Builders<ItemDocument>.IndexKeys;
+        await Items.Indexes.CreateManyAsync(
+            [
+                new CreateIndexModel<ItemDocument>(keys.Ascending(x => x.OwnerId).Ascending(x => x.ParentId)),
+                new CreateIndexModel<ItemDocument>(keys.Ascending(x => x.OwnerId).Ascending(x => x.NameLower)),
+            ],
+            cancellationToken);
+
+        // Collection của Phase 0–1 (mô hình Folder/File) không còn dùng.
+        await database.DropCollectionAsync("folders", cancellationToken);
+        await database.DropCollectionAsync("files", cancellationToken);
     }
 }

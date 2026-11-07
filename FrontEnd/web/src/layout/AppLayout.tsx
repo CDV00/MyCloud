@@ -27,9 +27,13 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useMatch } from 'react-router';
 import { NewFolderDialog } from '../features/drive/NewFolderDialog';
+import { QuotaBar } from '../features/drive/QuotaBar';
+import { useRoot } from '../features/drive/queries';
+import { UploadPanel } from '../features/upload/UploadPanel';
+import { uploadStore } from '../features/upload/uploadStore';
 import { UserMenu } from './UserMenu';
 
 const DRAWER_WIDTH = 256;
@@ -59,9 +63,12 @@ export function AppLayout() {
   const [newMenuAnchor, setNewMenuAnchor] = useState<HTMLElement | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
 
-  // Thư mục mới được tạo trong thư mục đang mở (hoặc ở gốc).
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  // Thư mục mới / file tải lên vào thư mục đang mở; ở các trang khác thì vào "Drive của tôi".
   const folderMatch = useMatch('/my-drive/folders/:folderId');
-  const currentFolderId = folderMatch?.params.folderId ?? null;
+  const root = useRoot();
+  const currentFolderId = folderMatch?.params.folderId ?? root.data?.id ?? null;
 
   const navigation = (
     <Box sx={{ px: 1.5, py: 2 }}>
@@ -93,6 +100,7 @@ export function AppLayout() {
           </ListItemButton>
         ))}
       </List>
+      <QuotaBar />
     </Box>
   );
 
@@ -158,13 +166,33 @@ export function AppLayout() {
           </ListItemIcon>
           Thư mục mới
         </MenuItem>
-        <MenuItem disabled>
+        <MenuItem
+          disabled={!currentFolderId}
+          onClick={() => {
+            setNewMenuAnchor(null);
+            fileInput.current?.click();
+          }}
+        >
           <ListItemIcon>
             <UploadFileOutlinedIcon fontSize="small" />
           </ListItemIcon>
-          Tải tệp lên (Phase 2)
+          Tải tệp lên
         </MenuItem>
       </Menu>
+
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        hidden
+        aria-hidden
+        onChange={(e) => {
+          if (e.target.files && currentFolderId) uploadStore.add(e.target.files, currentFolderId);
+          e.target.value = ''; // chọn lại cùng file vẫn kích hoạt onChange
+        }}
+      />
+
+      <UploadPanel />
 
       <NewFolderDialog
         open={newFolderOpen}

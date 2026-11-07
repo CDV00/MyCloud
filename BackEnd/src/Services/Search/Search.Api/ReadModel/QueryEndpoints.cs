@@ -1,68 +1,45 @@
+using System.Text.RegularExpressions;
 using Carter;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using MyCloud.BuildingBlocks.Application.Abstractions;
 
 namespace Search.Api.ReadModel;
 
+/// <summary>
+/// Tìm theo tên trong Drive của chính mình. Danh sách thư mục đọc thẳng từ Drive (nhất quán ngay — ADR-003);
+/// Search chấp nhận trễ vài giây. Phase 3: full-text, lọc theo loại, "Gần đây".
+/// </summary>
 public sealed class QueryEndpoints : ICarterModule
 {
-    private const int MaxItems = 200;
+    private const int MaxResults = 50;
 
-    public sealed record FolderResponse(Guid Id, string Name, string Description, Guid? ParentId);
-
-    public sealed record FileResponse(Guid Id, string Name, string ContentType, long SizeBytes, string Description, Guid FolderId);
+    public sealed record SearchHit(Guid Id, Guid? ParentId, string Kind, string Name, string? MimeType, long SizeBytes, DateTimeOffset UpdatedAt);
 
     public void AddRoutes(IEndpointRouteBuilder app)
     {
-        // Chỉ trả dữ liệu của người đang đăng nhập (item của người khác ⇒ 404).
-        // Phase 3: tìm kiếm, "Gần đây", phân trang cursor; Phase 4: item được chia sẻ.
-        var versioned = app.NewVersionedApi("Search");
-
-        var folders = versioned.MapGroup("/api/v{version:apiVersion}/folders").HasApiVersion(1).RequireAuthorization();
-        folders.MapGet("/", ListFoldersAsync).WithName("ListFolders");
-        folders.MapGet("/{folderId:guid}", GetFolderAsync).WithName("GetFolder");
-
-        var files = versioned.MapGroup("/api/v{version:apiVersion}/files").HasApiVersion(1).RequireAuthorization();
-        files.MapGet("/", ListFilesAsync).WithName("ListFiles");
-        files.MapGet("/{fileId:guid}", GetFileAsync).WithName("GetFile");
+        app.NewVersionedApi("Search")
+            .MapGroup("/api/v{version:apiVersion}")
+            .HasApiVersion(1)
+            .RequireAuthorization()
+            .MapGet("/search", SearchAsync)
+            .WithName("SearchItems");
     }
 
-    private static async Task<IResult> ListFoldersAsync(Guid? parentId, SearchDb db, ICurrentUser user, CancellationToken ct)
+    private static async Task<IResult> SearchAsync(string? q, SearchDb db, ICurrentUser user, CancellationToken ct)
     {
-        Guid ownerId = user.GetRequiredUserId();
-        var items = await db.Folders.Find(x => x.OwnerId == ownerId && x.ParentId == parentId)
-            .SortBy(x => x.Name).Limit(MaxItems).ToListAsync(ct);
-        return Results.Ok(items.Select(ToResponse));
-    }
-
-    private static async Task<IResult> GetFolderAsync(Guid folderId, SearchDb db, ICurrentUser user, CancellationToken ct)
-    {
-        Guid ownerId = user.GetRequiredUserId();
-        FolderDocument? doc = await db.Folders.Find(x => x.Id == folderId && x.OwnerId == ownerId).FirstOrDefaultAsync(ct);
-        return doc is null ? Results.NotFound() : Results.Ok(ToResponse(doc));
-    }
-
-    private static async Task<IResult> ListFilesAsync(Guid? folderId, SearchDb db, ICurrentUser user, CancellationToken ct)
-    {
-        var f = Builders<FileDocument>.Filter;
-        var filter = f.Eq(x => x.OwnerId, user.GetRequiredUserId());
-        if (folderId is { } id)
+        string term = (q ?? string.Empty).Trim().ToLowerInvariant();
+        if (term.Length is 0 or > 100)
         {
-            filter &= f.Eq(x => x.FolderId, id);
+            return Results.Ok(Array.Empty<SearchHit>());
         }
 
-        var items = await db.Files.Find(filter).SortBy(x => x.Name).Limit(MaxItems).ToListAsync(ct);
-        return Results.Ok(items.Select(ToResponse));
+        var f = Builders<ItemDocument>.Filter;
+        FilterDefinition<ItemDocument> filter =
+            f.Eq(x => x.OwnerId, user.GetRequiredUserId())
+            & f.Regex(x => x.NameLower, new BsonRegularExpression(Regex.Escape(term)));
+
+        List<ItemDocument> items = await db.Items.Find(filter).SortBy(x => x.NameLower).Limit(MaxResults).ToListAsync(ct);
+        return Results.Ok(items.Select(d => new SearchHit(d.Id, d.ParentId, d.Kind, d.Name, d.MimeType, d.SizeBytes, d.UpdatedAt)));
     }
-
-    private static async Task<IResult> GetFileAsync(Guid fileId, SearchDb db, ICurrentUser user, CancellationToken ct)
-    {
-        Guid ownerId = user.GetRequiredUserId();
-        FileDocument? doc = await db.Files.Find(x => x.Id == fileId && x.OwnerId == ownerId).FirstOrDefaultAsync(ct);
-        return doc is null ? Results.NotFound() : Results.Ok(ToResponse(doc));
-    }
-
-    private static FolderResponse ToResponse(FolderDocument d) => new(d.Id, d.Name, d.Description, d.ParentId);
-
-    private static FileResponse ToResponse(FileDocument d) => new(d.Id, d.Name, d.ContentType, d.SizeBytes, d.Description, d.FolderId);
 }

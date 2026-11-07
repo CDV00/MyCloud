@@ -7,6 +7,9 @@ import { defineConfig } from 'vite';
 // Khi chạy qua Aspire, địa chỉ Gateway và cổng được truyền qua biến môi trường.
 const gatewayUrl =
   process.env.services__gateway__http__0 ?? process.env.GATEWAY_HTTP ?? 'http://localhost:5000';
+// Object storage (MinIO API). Presigned URL được ký cho chính origin của trình duyệt, nên Vite phải chuyển nguyên
+// Host header (changeOrigin: false) để chữ ký S3 khớp (ADR-013).
+const objectStorageUrl = process.env.MINIO_URL ?? 'http://localhost:9000';
 
 export default defineConfig({
   plugins: [react()],
@@ -15,6 +18,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': { target: gatewayUrl, xfwd: true },
+      '/mycloud-blobs': { target: objectStorageUrl, changeOrigin: false },
     },
   },
   build: {

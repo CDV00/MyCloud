@@ -1,12 +1,19 @@
 using Drive.Application.Abstractions;
-using Drive.Domain.Repositories;
+using Drive.Application.Uploads;
+using Drive.Domain;
+using Drive.Infrastructure.Maintenance;
+using Drive.Infrastructure.Messaging;
 using Drive.Infrastructure.Persistence;
 using Drive.Infrastructure.Storage;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MyCloud.BuildingBlocks.Application.Abstractions;
+using MyCloud.BuildingBlocks.Grpc;
 using MyCloud.BuildingBlocks.Messaging;
+using MyCloud.Contracts.Storage.V1;
 
 namespace Drive.Infrastructure;
 
@@ -20,15 +27,24 @@ public static class DependencyInjection
         builder.AddNpgsqlDbContext<DriveDbContext>(ConnectionName,
             configureDbContextOptions: o => o.UseSnakeCaseNamingConvention());
 
-        builder.AddMessaging(x => x.AddPostgresOutbox<DriveDbContext>());
+        builder.AddMessaging(x =>
+        {
+            x.AddPostgresOutbox<DriveDbContext>();
+            x.AddConsumer<UserRegisteredConsumer>();
+        });
 
-        builder.Services.AddSingleton(TimeProvider.System);
-        builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
-        builder.Services.AddScoped<IFolderRepository, FolderRepository>();
-        builder.Services.AddScoped<IFileRepository, FileRepository>();
+        IServiceCollection services = builder.Services;
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<IDriveItemRepository, DriveItemRepository>();
+        services.AddScoped<IPendingUploadRepository, PendingUploadRepository>();
+        services.AddScoped<IFileVersionReader, FileVersionReader>();
+        services.AddHostedService<PendingUploadCleanup>();
 
-        builder.Services.Configure<FileStorageOptions>(builder.Configuration.GetSection(FileStorageOptions.SectionName));
-        builder.Services.AddSingleton<IFileContentStore, LocalDiskFileContentStore>();
+        // Storage gRPC: endpoint tên "grpc" của service "storage" (HTTP/2 không TLS, chỉ trong mạng nội bộ).
+        Uri storageGrpc = new(builder.Configuration["Services:Storage:Grpc"] ?? "http://_grpc.storage");
+        services.AddGrpcClientDefaults<StorageService.StorageServiceClient>(storageGrpc);
+        services.AddScoped<IStorageClient, GrpcStorageClient>();
 
         return builder;
     }

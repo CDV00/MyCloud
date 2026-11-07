@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package mycloud.storage.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "MyCloud.Contracts.Storage.V1";
+
+// Byte của file và dung lượng. Chỉ Drive gọi (nội bộ, h2c); client trình duyệt dùng REST của Storage để ký thêm part.
+// Mọi upload là S3 multipart (file nhỏ = 1 part). Xem docs/03 §4 và ADR-006.
+service StorageService {
+  // Giữ chỗ quota, mở multipart upload, ký URL cho các part đầu.
+  rpc CreateUploadSession(CreateUploadSessionRequest) returns (CreateUploadSessionResponse);
+  // Ký thêm URL part (URL hết hạn sau 1 giờ).
+  rpc SignUploadParts(SignUploadPartsRequest) returns (SignUploadPartsResponse);
+  // Ghép part, kiểm tra kích thước thật, chuyển quota từ "giữ chỗ" sang "đã dùng".
+  rpc CompleteUpload(CompleteUploadRequest) returns (CompleteUploadResponse);
+  // Huỷ upload và trả quota đã giữ.
+  rpc AbortUpload(AbortUploadRequest) returns (AbortUploadResponse);
+  // Presigned GET kèm Content-Disposition.
+  rpc GetDownloadUrl(GetDownloadUrlRequest) returns (GetDownloadUrlResponse);
+  rpc GetQuota(GetQuotaRequest) returns (GetQuotaResponse);
+}
+
+message PresignedPart {
+  int32 part_number = 1;
+  string url = 2;
+}
+
+message CompletedPart {
+  int32 part_number = 1;
+  string etag = 2;
+}
+
+message CreateUploadSessionRequest {
+  string user_id = 1;
+  int64 size_bytes = 2;
+  string mime_type = 3;
+  // Gốc URL mà trình duyệt dùng (vd http://mycloud.localhost) — presigned URL được ký cho đúng host này.
+  // Bỏ trống: dùng Storage:PublicBaseUrl trong cấu hình.
+  string public_base_url = 4;
+}
+
+message CreateUploadSessionResponse {
+  string session_id = 1;
+  string blob_id = 2;
+  int64 part_size = 3;
+  int32 part_count = 4;
+  // Tối đa 50 part đầu; còn lại xin thêm bằng SignUploadParts / REST.
+  repeated PresignedPart parts = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message SignUploadPartsRequest {
+  string session_id = 1;
+  string user_id = 2;
+  repeated int32 part_numbers = 3;
+  string public_base_url = 4;
+}
+
+message SignUploadPartsResponse {
+  repeated PresignedPart parts = 1;
+}
+
+message CompleteUploadRequest {
+  string session_id = 1;
+  string user_id = 2;
+  repeated CompletedPart parts = 3;
+}
+
+message CompleteUploadResponse {
+  string blob_id = 1;
+  int64 size_bytes = 2;
+}
+
+message AbortUploadRequest {
+  string session_id = 1;
+  string user_id = 2;
+}
+
+message AbortUploadResponse {}
+
+message GetDownloadUrlRequest {
+  string blob_id = 1;
+  string user_id = 2;
+  // Tên file cho Content-Disposition (blob key không chứa tên file).
+  string file_name = 3;
+  string mime_type = 4;
+  // true: xem trực tiếp trong trình duyệt; false: tải về.
+  bool inline = 5;
+  string public_base_url = 6;
+}
+
+message GetDownloadUrlResponse {
+  string url = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message GetQuotaRequest {
+  string user_id = 1;
+}
+
+message GetQuotaResponse {
+  int64 limit_bytes = 1;
+  int64 used_bytes = 2;
+  int64 reserved_bytes = 3;
+}

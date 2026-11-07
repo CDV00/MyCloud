@@ -4,119 +4,75 @@ using MyCloud.Contracts.Events.Drive;
 
 namespace Search.Api.ReadModel;
 
-// Thay cho Consumer + EventProjection của bản cũ (find-rồi-insert không atomic, lỗi R3).
-// Mỗi thao tác là upsert/delete theo Id nên tự idempotent; điều kiện UpdatedAt < OccurredAt
-// bỏ qua event cũ đến sau event mới. Phase 3 chuyển sang Revision của DriveItem (docs/04 §3.5).
-
-internal static class Upsert
+/// <summary>
+/// Chiếu event của Drive vào read model. Mọi cập nhật có điều kiện <c>Revision &lt; revision của event</c> nên
+/// idempotent và bỏ qua event đến muộn. Event cập nhật tới trước <c>ItemCreated</c> (hiếm: outbox giao theo thứ tự)
+/// sẽ bị bỏ qua — Phase 3 bổ sung đối soát với Drive.
+/// </summary>
+public sealed class ItemProjectionConsumer(SearchDb db)
+    : IConsumer<ItemCreated>, IConsumer<ItemRenamed>, IConsumer<ItemMoved>, IConsumer<FileVersionAdded>
 {
     private const int DuplicateKey = 11000;
 
-    public static async Task IfNewerAsync<T>(
-        IMongoCollection<T> collection,
-        FilterDefinition<T> byId,
-        FilterDefinition<T> olderThanEvent,
-        T document,
-        CancellationToken cancellationToken)
+    private static FilterDefinitionBuilder<ItemDocument> F => Builders<ItemDocument>.Filter;
+
+    private static UpdateDefinitionBuilder<ItemDocument> U => Builders<ItemDocument>.Update;
+
+    public async Task Consume(ConsumeContext<ItemCreated> context)
     {
+        ItemCreated e = context.Message;
+        var document = new ItemDocument
+        {
+            Id = e.ItemId,
+            OwnerId = e.OwnerId,
+            ParentId = e.ParentId,
+            Kind = e.Kind == ItemKind.Folder ? "folder" : "file",
+            Name = e.Name,
+            NameLower = e.Name.ToLowerInvariant(),
+            MimeType = e.MimeType,
+            SizeBytes = e.SizeBytes,
+            Revision = e.Revision,
+            UpdatedAt = e.OccurredAt,
+        };
+
         try
         {
-            await collection.ReplaceOneAsync(
-                byId & olderThanEvent,
+            await db.Items.ReplaceOneAsync(
+                F.Eq(x => x.Id, e.ItemId) & F.Lt(x => x.Revision, e.Revision),
                 document,
                 new ReplaceOptions { IsUpsert = true },
-                cancellationToken);
+                context.CancellationToken);
         }
         catch (MongoWriteException ex) when (ex.WriteError.Code == DuplicateKey)
         {
-            // Đã có bản mới hơn: upsert không khớp filter và đụng _id → bỏ qua event cũ.
+            // Đã có bản mới hơn: filter không khớp nên upsert đụng _id ⇒ bỏ qua event cũ.
         }
     }
-}
 
-public sealed class FolderProjectionConsumer(SearchDb db)
-    : IConsumer<FolderCreated>, IConsumer<FolderUpdated>, IConsumer<FolderDeleted>
-{
-    public Task Consume(ConsumeContext<FolderCreated> context)
-    {
-        FolderCreated e = context.Message;
-        return Save(new FolderDocument
-        {
-            Id = e.FolderId,
-            OwnerId = e.OwnerId,
-            Name = e.Name,
-            Description = e.Description,
-            ParentId = e.ParentId,
-            UpdatedAt = e.OccurredAt,
-        }, context.CancellationToken);
-    }
+    public Task Consume(ConsumeContext<ItemRenamed> context) =>
+        ApplyAsync(context.Message.ItemId, context.Message.Revision,
+            U.Set(x => x.Name, context.Message.NewName)
+                .Set(x => x.NameLower, context.Message.NewName.ToLowerInvariant())
+                .Set(x => x.UpdatedAt, context.Message.OccurredAt),
+            context.CancellationToken);
 
-    public Task Consume(ConsumeContext<FolderUpdated> context)
-    {
-        FolderUpdated e = context.Message;
-        return Save(new FolderDocument
-        {
-            Id = e.FolderId,
-            OwnerId = e.OwnerId,
-            Name = e.Name,
-            Description = e.Description,
-            ParentId = e.ParentId,
-            UpdatedAt = e.OccurredAt,
-        }, context.CancellationToken);
-    }
+    public Task Consume(ConsumeContext<ItemMoved> context) =>
+        ApplyAsync(context.Message.ItemId, context.Message.Revision,
+            U.Set(x => x.ParentId, context.Message.NewParentId).Set(x => x.UpdatedAt, context.Message.OccurredAt),
+            context.CancellationToken);
 
-    public Task Consume(ConsumeContext<FolderDeleted> context) =>
-        db.Folders.DeleteOneAsync(x => x.Id == context.Message.FolderId, context.CancellationToken);
+    public Task Consume(ConsumeContext<FileVersionAdded> context) =>
+        // Version đầu tiên có cùng revision với ItemCreated ⇒ dùng ≤ để vẫn cập nhật kích thước.
+        db.Items.UpdateOneAsync(
+            F.Eq(x => x.Id, context.Message.ItemId) & F.Lte(x => x.Revision, context.Message.Revision),
+            U.Set(x => x.SizeBytes, context.Message.SizeBytes)
+                .Set(x => x.MimeType, context.Message.MimeType)
+                .Set(x => x.Revision, context.Message.Revision),
+            cancellationToken: context.CancellationToken);
 
-    private Task Save(FolderDocument document, CancellationToken ct)
-    {
-        var f = Builders<FolderDocument>.Filter;
-        return Upsert.IfNewerAsync(db.Folders, f.Eq(x => x.Id, document.Id), f.Lt(x => x.UpdatedAt, document.UpdatedAt), document, ct);
-    }
-}
-
-public sealed class FileProjectionConsumer(SearchDb db)
-    : IConsumer<FileCreated>, IConsumer<FileUpdated>, IConsumer<FileDeleted>
-{
-    public Task Consume(ConsumeContext<FileCreated> context)
-    {
-        FileCreated e = context.Message;
-        return Save(new FileDocument
-        {
-            Id = e.FileId,
-            OwnerId = e.OwnerId,
-            Name = e.Name,
-            ContentType = e.ContentType,
-            SizeBytes = e.SizeBytes,
-            Description = e.Description,
-            FolderId = e.FolderId,
-            UpdatedAt = e.OccurredAt,
-        }, context.CancellationToken);
-    }
-
-    public Task Consume(ConsumeContext<FileUpdated> context)
-    {
-        // Bản cũ không cập nhật Size/Type (lỗi R5) — event mới mang đủ trạng thái.
-        FileUpdated e = context.Message;
-        return Save(new FileDocument
-        {
-            Id = e.FileId,
-            OwnerId = e.OwnerId,
-            Name = e.Name,
-            ContentType = e.ContentType,
-            SizeBytes = e.SizeBytes,
-            Description = e.Description,
-            FolderId = e.FolderId,
-            UpdatedAt = e.OccurredAt,
-        }, context.CancellationToken);
-    }
-
-    public Task Consume(ConsumeContext<FileDeleted> context) =>
-        db.Files.DeleteOneAsync(x => x.Id == context.Message.FileId, context.CancellationToken);
-
-    private Task Save(FileDocument document, CancellationToken ct)
-    {
-        var f = Builders<FileDocument>.Filter;
-        return Upsert.IfNewerAsync(db.Files, f.Eq(x => x.Id, document.Id), f.Lt(x => x.UpdatedAt, document.UpdatedAt), document, ct);
-    }
+    private Task<UpdateResult> ApplyAsync(Guid itemId, long revision, UpdateDefinition<ItemDocument> update, CancellationToken ct) =>
+        db.Items.UpdateOneAsync(
+            F.Eq(x => x.Id, itemId) & F.Lt(x => x.Revision, revision),
+            update.Set(x => x.Revision, revision),
+            cancellationToken: ct);
 }

@@ -9,6 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.AddWebApiDefaults(typeof(Program).Assembly);
 builder.Services.AddApplicationDefaults(DriveApplication.Assembly);
+builder.Services.AddDriveApplication();
 builder.AddDriveInfrastructure();
 
 var app = builder.Build();
