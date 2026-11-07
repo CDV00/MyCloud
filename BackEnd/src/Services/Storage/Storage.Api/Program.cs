@@ -35,6 +35,7 @@ builder.Services.AddSingleton(_ => ObjectStorageConnection.Parse(
 builder.Services.AddSingleton<S3ObjectStorage>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<QuotaStore>();
+builder.Services.AddScoped<QuotaAlerts>();
 builder.Services.AddScoped<UploadService>();
 builder.Services.AddScoped<Storage.Api.Messaging.BlobReclaimer>();
 builder.Services.AddSingleton<StorageMaintenance>();

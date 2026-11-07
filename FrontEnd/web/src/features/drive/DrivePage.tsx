@@ -8,6 +8,7 @@ import DriveFileMoveOutlinedIcon from '@mui/icons-material/DriveFileMoveOutlined
 import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutline';
 import GridViewIcon from '@mui/icons-material/GridView';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import PersonAddAltOutlinedIcon from '@mui/icons-material/PersonAddAltOutlined';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import StarIcon from '@mui/icons-material/Star';
 import ViewListIcon from '@mui/icons-material/ViewList';
@@ -29,7 +30,7 @@ import {
 } from '@mui/material';
 import { useState, type DragEvent, type KeyboardEvent } from 'react';
 import { Link as RouterLink, useParams } from 'react-router';
-import type { SortField } from '../../api/drive';
+import { canEdit, canManage, type SortField } from '../../api/drive';
 import { toUserMessage } from '../../api/errors';
 import { uploadStore } from '../upload/uploadStore';
 import { folderPath } from './download';
@@ -83,11 +84,14 @@ export default function DrivePage() {
   const [dragging, setDragging] = useState(false);
   const loadError = root.error ?? folder.error ?? children.error;
   const inTrash = folder.data?.trashedAt != null;
+  // Thư mục được chia sẻ chỉ quyền xem: không thả tệp / tạo mới bên trong.
+  const writable = !inTrash && (folder.data ? canEdit(folder.data) : true);
+  const sharedWithMe = folder.data !== undefined && folder.data.role !== 'owner';
 
   function onDrop(event: DragEvent) {
     event.preventDefault();
     setDragging(false);
-    if (folderId && !inTrash && event.dataTransfer.files.length > 0) {
+    if (folderId && writable && event.dataTransfer.files.length > 0) {
       uploadStore.add(event.dataTransfer.files, folderId);
     }
   }
@@ -99,18 +103,28 @@ export default function DrivePage() {
 
   function onKeyDown(event: KeyboardEvent) {
     const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
-    if (event.key === 'Delete' && !typing && selectedItems.length > 0 && !inTrash) trashSelection();
+    if (
+      event.key === 'Delete' &&
+      !typing &&
+      selectedItems.length > 0 &&
+      !inTrash &&
+      selectedItems.every(canManage)
+    ) {
+      trashSelection();
+    }
   }
 
   const single = selectedItems.length === 1 ? selectedItems[0]! : null;
   const allStarred = selectedItems.length > 0 && selectedItems.every((i) => i.starred);
+  const editable = selectedItems.length > 0 && selectedItems.every(canEdit);
+  const manageable = selectedItems.length > 0 && selectedItems.every(canManage);
   const title = folder.data ? (folder.data.isRoot ? 'Drive của tôi' : folder.data.name) : 'Drive của tôi';
 
   return (
     <Box
       onKeyDown={onKeyDown}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes('Files') && !inTrash) {
+        if (e.dataTransfer.types.includes('Files') && writable) {
           e.preventDefault();
           setDragging(true);
         }
@@ -130,6 +144,11 @@ export default function DrivePage() {
           separator={<ChevronRightIcon fontSize="small" />}
           sx={{ flexGrow: 1, '& ol': { flexWrap: 'nowrap' } }}
         >
+          {sharedWithMe && (
+            <Link component={RouterLink} to="/shared" underline="hover" color="inherit" variant="h6">
+              Được chia sẻ với tôi
+            </Link>
+          )}
           {(ancestors.data ?? []).map((a) => (
             <Link
               key={a.id}
@@ -182,6 +201,12 @@ export default function DrivePage() {
         </ToggleButtonGroup>
       </Stack>
 
+      {sharedWithMe && !writable && !inTrash && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Bạn chỉ có quyền xem thư mục này.
+        </Alert>
+      )}
+
       {inTrash && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           Thư mục này đang ở thùng rác nên chỉ xem được. Khôi phục nó từ trang Thùng rác để chỉnh sửa.
@@ -199,11 +224,16 @@ export default function DrivePage() {
           </BarButton>
         )}
         {!inTrash && single && (
+          <BarButton title="Chia sẻ" onClick={() => actions.share(single)}>
+            <PersonAddAltOutlinedIcon fontSize="small" />
+          </BarButton>
+        )}
+        {!inTrash && single && editable && (
           <BarButton title="Đổi tên" onClick={() => actions.rename(single)}>
             <DriveFileRenameOutlineIcon fontSize="small" />
           </BarButton>
         )}
-        {!inTrash && (
+        {!inTrash && editable && (
           <BarButton title="Di chuyển" onClick={() => actions.move(selectedItems)}>
             <DriveFileMoveOutlinedIcon fontSize="small" />
           </BarButton>
@@ -216,7 +246,7 @@ export default function DrivePage() {
             {allStarred ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
           </BarButton>
         )}
-        {!inTrash && (
+        {!inTrash && manageable && (
           <BarButton title="Chuyển vào thùng rác" onClick={trashSelection}>
             <DeleteOutlineIcon fontSize="small" />
           </BarButton>
@@ -245,9 +275,9 @@ export default function DrivePage() {
         >
           <CloudUploadOutlinedIcon sx={{ fontSize: 64 }} />
           <Typography variant="h6" color="text.primary">
-            {inTrash ? 'Thư mục trống' : 'Thả tệp vào đây'}
+            {writable ? 'Thả tệp vào đây' : 'Thư mục trống'}
           </Typography>
-          {!inTrash && <Typography>hoặc dùng nút “Mới” để tạo thư mục, tải tệp lên.</Typography>}
+          {writable && <Typography>hoặc dùng nút “Mới” để tạo thư mục, tải tệp lên.</Typography>}
         </Stack>
       )}
 

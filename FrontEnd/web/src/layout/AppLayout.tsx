@@ -30,9 +30,11 @@ import {
 import { useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useMatch } from 'react-router';
 import { NewFolderDialog } from '../features/drive/NewFolderDialog';
+import { NotificationBell } from '../features/notifications/NotificationBell';
 import { SearchBox } from '../features/search/SearchBox';
 import { QuotaBar } from '../features/drive/QuotaBar';
-import { useRoot } from '../features/drive/queries';
+import { useItem, useRoot } from '../features/drive/queries';
+import { canEdit } from '../api/drive';
 import { UploadPanel } from '../features/upload/UploadPanel';
 import { uploadStore } from '../features/upload/uploadStore';
 import { UserMenu } from './UserMenu';
@@ -70,6 +72,9 @@ export function AppLayout() {
   const folderMatch = useMatch('/my-drive/folders/:folderId');
   const root = useRoot();
   const currentFolderId = folderMatch?.params.folderId ?? root.data?.id ?? null;
+  // Thư mục của người khác chỉ được chia sẻ quyền xem: không tạo / tải lên vào đó.
+  const currentFolder = useItem(folderMatch?.params.folderId);
+  const canAddHere = !currentFolder.data || (canEdit(currentFolder.data) && !currentFolder.data.trashedAt);
 
   const navigation = (
     <Box sx={{ px: 1.5, py: 2 }}>
@@ -129,6 +134,7 @@ export function AppLayout() {
           </Typography>
           <SearchBox />
           <Box sx={{ flexGrow: 1, minWidth: 8 }} />
+          <NotificationBell />
           <UserMenu />
         </Toolbar>
       </AppBar>
@@ -163,6 +169,7 @@ export function AppLayout() {
 
       <Menu anchorEl={newMenuAnchor} open={Boolean(newMenuAnchor)} onClose={() => setNewMenuAnchor(null)}>
         <MenuItem
+          disabled={!canAddHere}
           onClick={() => {
             setNewMenuAnchor(null);
             setNewFolderOpen(true);
@@ -174,7 +181,7 @@ export function AppLayout() {
           Thư mục mới
         </MenuItem>
         <MenuItem
-          disabled={!currentFolderId}
+          disabled={!currentFolderId || !canAddHere}
           onClick={() => {
             setNewMenuAnchor(null);
             fileInput.current?.click();

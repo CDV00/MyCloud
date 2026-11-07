@@ -22,6 +22,10 @@ public sealed class RateLimitingOptions
     /// <summary>API thường: số request mỗi giây mỗi user (token bucket, cho phép burst gấp đôi).</summary>
     [Range(1, 100_000)]
     public int ApiPermitsPerSecond { get; set; } = 100;
+
+    /// <summary>Truy cập ẩn danh qua link chia sẻ: số request mỗi phút mỗi IP (cũng giới hạn đoán mật khẩu link).</summary>
+    [Range(1, 100_000)]
+    public int PublicPermitsPerMinute { get; set; } = 120;
 }
 
 /// <summary>
@@ -33,6 +37,7 @@ public static class RateLimitPolicies
     public const string Login = "login";
     public const string Auth = "auth";
     public const string Api = "api";
+    public const string Public = "public";
 
     public static IHostApplicationBuilder AddGatewayRateLimiting(this IHostApplicationBuilder builder)
     {
@@ -66,6 +71,13 @@ public static class RateLimitPolicies
             o.AddPolicy(Auth, ctx => RateLimitPartition.GetFixedWindowLimiter(ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = limits.AuthPermitsPerMinute,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
+            o.AddPolicy(Public, ctx => RateLimitPartition.GetFixedWindowLimiter(ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = limits.PublicPermitsPerMinute,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));

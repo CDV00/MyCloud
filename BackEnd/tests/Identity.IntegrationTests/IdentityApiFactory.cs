@@ -12,6 +12,8 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncL
     /// <summary>Đường dẫn auth khi gọi thẳng Identity (không qua Gateway) — cookie phải khớp để client test gửi kèm.</summary>
     public const string AuthPath = "/api/v1/auth";
 
+    public const string ServiceClientSecret = "test-drive-client-secret";
+
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
 
     public async Task InitializeAsync() => await _postgres.StartAsync();
@@ -29,6 +31,7 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncL
         builder.UseSetting("ConnectionStrings:rabbitmq", "amqp://guest:guest@localhost:5672");
         builder.UseSetting("Tokens:CookiePath", AuthPath);
         builder.UseSetting("Tokens:RefreshReuseLeeway", "00:00:00"); // test phát hiện dùng lại token ngay lập tức
+        builder.UseSetting("ServiceClients:Clients:drive:Secret", ServiceClientSecret);
 
         builder.ConfigureTestServices(services => services.AddMassTransitTestHarness());
     }

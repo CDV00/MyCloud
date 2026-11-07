@@ -27,6 +27,7 @@ public sealed record QuotaInfo(long LimitBytes, long UsedBytes, long ReservedByt
 public sealed partial class UploadService(
     StorageDbContext db,
     QuotaStore quotas,
+    QuotaAlerts alerts,
     S3ObjectStorage s3,
     IOptions<StorageOptions> options,
     TimeProvider timeProvider,
@@ -35,7 +36,7 @@ public sealed partial class UploadService(
     private readonly StorageOptions _options = options.Value;
 
     public async Task<UploadSession> CreateSessionAsync(
-        Guid userId, long sizeBytes, string? mimeType, string? publicBaseUrl, CancellationToken ct)
+        Guid userId, Guid uploaderId, long sizeBytes, string? mimeType, string? publicBaseUrl, CancellationToken ct)
     {
         if (sizeBytes < 0)
         {
@@ -54,6 +55,7 @@ public sealed partial class UploadService(
         {
             Id = blobId,
             OwnerId = userId,
+            UploaderId = uploaderId,
             Bucket = s3.Bucket,
             ObjectKey = Blob.KeyFor(userId, blobId),
             MimeType = string.IsNullOrWhiteSpace(mimeType) ? "application/octet-stream" : mimeType.Trim(),
@@ -104,7 +106,7 @@ public sealed partial class UploadService(
     public async Task<IReadOnlyList<SignedPart>> SignPartsAsync(
         Guid userId, Guid sessionId, IReadOnlyCollection<int> partNumbers, string? publicBaseUrl, CancellationToken ct)
     {
-        Blob blob = await FindPendingAsync(userId, sessionId, ct);
+        Blob blob = await FindPendingForUploaderAsync(userId, sessionId, ct);
         if (partNumbers.Count is 0 or > 1000 || partNumbers.Any(n => n < 1 || n > blob.PartCount))
         {
             throw new InvalidUploadException($"Part numbers must be between 1 and {blob.PartCount} (at most 1000 per request).");
@@ -116,7 +118,7 @@ public sealed partial class UploadService(
     /// <summary>Các part đã lên storage — client dùng để tiếp tục upload sau khi mất mạng / tải lại trang.</summary>
     public async Task<IReadOnlyList<UploadedPart>> ListUploadedPartsAsync(Guid userId, Guid sessionId, CancellationToken ct)
     {
-        Blob blob = await FindPendingAsync(userId, sessionId, ct);
+        Blob blob = await FindPendingForUploaderAsync(userId, sessionId, ct);
         return await s3.ListPartsAsync(blob.ObjectKey, blob.S3UploadId!, ct);
     }
 
@@ -160,6 +162,7 @@ public sealed partial class UploadService(
             blob.UploadedAt = timeProvider.GetUtcNow();
             await db.SaveChangesAsync(ct);
             await quotas.CommitAsync(db, blob.OwnerId, blob.ExpectedSizeBytes, actualSize, ct);
+            await alerts.CheckAsync(db, blob.OwnerId, actualSize, ct);
         }, ct);
 
         return (blob.Id, actualSize);
@@ -200,9 +203,9 @@ public sealed partial class UploadService(
     /// Sao chép blob phía server cho <paramref name="userId"/> (sao chép file, khôi phục version). Giữ chỗ quota trước,
     /// copy, rồi ghi nhận như một upload đã xong (Uploaded) — Drive claim bằng FileVersionAdded, không claim ⇒ GC.
     /// </summary>
-    public async Task<(Guid BlobId, long SizeBytes)> CopyAsync(Guid userId, Guid sourceBlobId, CancellationToken ct)
+    public async Task<(Guid BlobId, long SizeBytes)> CopyAsync(Guid userId, Guid sourceOwnerId, Guid sourceBlobId, CancellationToken ct)
     {
-        Blob source = await FindOwnedAsync(userId, sourceBlobId, ct) ?? throw new BlobNotFoundException(sourceBlobId);
+        Blob source = await FindOwnedAsync(sourceOwnerId, sourceBlobId, ct) ?? throw new BlobNotFoundException(sourceBlobId);
         if (source.Status is not (BlobStatus.Uploaded or BlobStatus.Claimed))
         {
             throw new BlobNotFoundException(sourceBlobId);
@@ -215,6 +218,7 @@ public sealed partial class UploadService(
         {
             Id = blobId,
             OwnerId = userId,
+            UploaderId = userId,
             Bucket = s3.Bucket,
             ObjectKey = Blob.KeyFor(userId, blobId),
             MimeType = source.MimeType,
@@ -259,6 +263,7 @@ public sealed partial class UploadService(
             blob.UploadedAt = timeProvider.GetUtcNow();
             await db.SaveChangesAsync(ct);
             await quotas.CommitAsync(db, userId, size, size, ct);
+            await alerts.CheckAsync(db, userId, size, ct);
         }, ct);
 
         return (blob.Id, size);
@@ -279,9 +284,11 @@ public sealed partial class UploadService(
             .ToArray();
     }
 
-    private async Task<Blob> FindPendingAsync(Guid userId, Guid sessionId, CancellationToken ct)
+    /// <summary>Ký part / xem part đã upload: chỉ người đang upload (có thể không phải chủ sở hữu thư mục).</summary>
+    private async Task<Blob> FindPendingForUploaderAsync(Guid uploaderId, Guid sessionId, CancellationToken ct)
     {
-        Blob blob = await FindOwnedAsync(userId, sessionId, ct) ?? throw new UploadNotFoundException(sessionId);
+        Blob blob = await db.Blobs.SingleOrDefaultAsync(b => b.Id == sessionId && b.UploaderId == uploaderId, ct)
+            ?? throw new UploadNotFoundException(sessionId);
         return blob.Status == BlobStatus.Pending && blob.S3UploadId is not null
             ? blob
             : throw new UploadNotPendingException(sessionId);

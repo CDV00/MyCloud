@@ -59,7 +59,7 @@ internal sealed class RestoreVersionCommandHandler(
 
         if (version.Id != item.CurrentVersionId)
         {
-            CompletedBlob copy = await storage.CopyBlobAsync(access.UserId, version.BlobId, cancellationToken);
+            CompletedBlob copy = await storage.CopyBlobAsync(item.OwnerId, item.OwnerId, version.BlobId, cancellationToken);
             item.AddVersion(Guid.CreateVersion7(), copy.BlobId, copy.SizeBytes, version.MimeType);
             await retention.ApplyAsync(item, cancellationToken);
         }

@@ -31,8 +31,12 @@ export function formatDateTime(iso: string): string {
 const ROOT_LABEL = 'Drive của tôi';
 
 /** Một dòng hoạt động: "Bạn đã đổi tên “a” thành “b”". */
-export function describeActivity(entry: ActivityEntry, currentUserId: string | undefined): string {
-  const actor = entry.actorId === currentUserId ? 'Bạn' : 'Người khác';
+export function describeActivity(
+  entry: ActivityEntry,
+  currentUserId: string | undefined,
+  actorName?: string,
+): string {
+  const actor = entry.actorId === currentUserId ? 'Bạn' : (actorName ?? 'Người khác');
   const what = entry.kind === 'folder' ? 'thư mục' : 'tệp';
   const name = `“${entry.name}”`;
   switch (entry.action) {

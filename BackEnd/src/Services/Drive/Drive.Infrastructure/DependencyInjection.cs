@@ -3,6 +3,7 @@ using Drive.Domain;
 using Drive.Infrastructure.Maintenance;
 using Drive.Infrastructure.Messaging;
 using Drive.Infrastructure.Persistence;
+using Drive.Infrastructure.Sharing;
 using Drive.Infrastructure.Storage;
 using Drive.Infrastructure.Trash;
 using MassTransit;
@@ -11,8 +12,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MyCloud.BuildingBlocks.Application.Abstractions;
+using MyCloud.BuildingBlocks.Authentication;
 using MyCloud.BuildingBlocks.Grpc;
 using MyCloud.BuildingBlocks.Messaging;
+using MyCloud.Contracts.Identity.V1;
+using MyCloud.Contracts.Sharing.V1;
 using MyCloud.Contracts.Storage.V1;
 
 namespace Drive.Infrastructure;
@@ -47,10 +51,20 @@ public static class DependencyInjection
         services.AddSingleton<TrashRetentionJob>();
         services.AddHostedService(sp => sp.GetRequiredService<TrashRetentionJob>());
 
-        // Storage gRPC: endpoint tên "grpc" của service "storage" (HTTP/2 không TLS, chỉ trong mạng nội bộ).
+        // gRPC nội bộ (endpoint tên "grpc", HTTP/2 không TLS) bằng định danh service của Drive (ADR-014).
+        builder.AddServiceIdentity();
         Uri storageGrpc = new(builder.Configuration["Services:Storage:Grpc"] ?? "http://_grpc.storage");
-        services.AddGrpcClientDefaults<StorageService.StorageServiceClient>(storageGrpc);
+        services.AddGrpcServiceClient<StorageService.StorageServiceClient>(storageGrpc);
         services.AddScoped<IStorageClient, GrpcStorageClient>();
+
+        Uri sharingGrpc = new(builder.Configuration["Services:Sharing:Grpc"] ?? "http://_grpc.sharing");
+        services.AddGrpcServiceClient<SharingService.SharingServiceClient>(sharingGrpc);
+        services.AddScoped<ISharingClient, GrpcSharingClient>();
+        services.AddScoped<IItemAuthorizer, SharingItemAuthorizer>();
+
+        Uri identityGrpc = new(builder.Configuration["Services:Identity:Grpc"] ?? "http://_grpc.identity");
+        services.AddGrpcServiceClient<UserService.UserServiceClient>(identityGrpc);
+        services.AddScoped<IUserDirectory, GrpcUserDirectory>();
 
         return builder;
     }

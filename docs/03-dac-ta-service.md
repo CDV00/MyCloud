@@ -245,6 +245,10 @@ quotas(user_id pk, limit_bytes, used_bytes, reserved_bytes, version)   -- UPDATE
 
 **Trách nhiệm**: ai được làm gì với item nào, và chia sẻ.
 
+> **Đã triển khai khác bản thiết kế dưới đây** ([ADR-014](08-adr.md#adr-014)): quyền lưu trong PostgreSQL thay OpenFGA
+> (kế thừa tính từ danh sách tổ tiên Drive gửi kèm), Sharing chỉ có gRPC nội bộ `sharing.v1.SharingService`, REST chia sẻ
+> nằm ở Drive (`/items/{id}/sharing|permissions|links`, `/public/links/{token}`), Drive gọi bằng định danh service.
+
 ### Mô hình quyền
 Vai trò: `owner` > `editor` > `commenter` > `viewer`. Quyền **kế thừa xuống** thư mục con. Dùng **OpenFGA** (Zanzibar) làm engine kiểm tra quyền ([ADR-007](08-adr.md#adr-007)):
 

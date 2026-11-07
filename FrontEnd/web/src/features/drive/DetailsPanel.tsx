@@ -23,7 +23,8 @@ import {
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link as RouterLink } from 'react-router';
-import { deleteVersion, restoreVersion, type DriveItem, type FileVersion } from '../../api/drive';
+import { canEdit, deleteVersion, restoreVersion, type DriveItem, type FileVersion } from '../../api/drive';
+import { useDisplayName, useUsers } from '../people/useUsers';
 import { toUserMessage } from '../../api/errors';
 import { useAuth } from '../../auth/authContext';
 import { formatModified, formatSize } from '../../lib/format';
@@ -97,7 +98,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function DetailsTabContent({ item }: { item: DriveItem }) {
-  const parent = useItem(item.parentId);
+  const parent = useItem(item.role === 'owner' ? item.parentId : null); // người được chia sẻ có thể không thấy thư mục cha
+  const users = useUsers([item.ownerId, item.modifiedBy]);
+  const nameOf = useDisplayName();
   return (
     <Stack spacing={2}>
       {item.trashedAt && (
@@ -105,7 +108,7 @@ function DetailsTabContent({ item }: { item: DriveItem }) {
       )}
       <Field label="Loại">{describeType(item)}</Field>
       {item.kind === 'file' && <Field label="Kích thước">{formatSize(item.sizeBytes)}</Field>}
-      {item.parentId && (
+      {item.parentId && item.role === 'owner' && (
         <Field label="Vị trí">
           {parent.data ? (
             <Link component={RouterLink} to={folderPath(parent.data)} underline="hover">
@@ -116,8 +119,11 @@ function DetailsTabContent({ item }: { item: DriveItem }) {
           )}
         </Field>
       )}
-      <Field label="Chủ sở hữu">Tôi</Field>
-      <Field label="Sửa đổi lần cuối">{formatDateTime(item.modifiedAt)}</Field>
+      <Field label="Chủ sở hữu">{nameOf(item.ownerId, users)}</Field>
+      <Field label="Quyền của bạn">{roleText[item.role]}</Field>
+      <Field label="Sửa đổi lần cuối">
+        {formatDateTime(item.modifiedAt)} · {nameOf(item.modifiedBy, users)}
+      </Field>
       <Field label="Ngày tạo">{formatDateTime(item.createdAt)}</Field>
       {item.kind === 'file' && <Field label="Phiên bản hiện tại">{item.versionNo}</Field>}
       <Field label="Gắn dấu sao">{item.starred ? 'Có' : 'Không'}</Field>
@@ -125,9 +131,18 @@ function DetailsTabContent({ item }: { item: DriveItem }) {
   );
 }
 
+const roleText: Record<DriveItem['role'], string> = {
+  owner: 'Chủ sở hữu',
+  editor: 'Người chỉnh sửa',
+  commenter: 'Người nhận xét',
+  viewer: 'Người xem',
+  none: '—',
+};
+
 function ActivityTabContent({ item }: { item: DriveItem }) {
   const { user } = useAuth();
   const activity = useActivity(item.id);
+  const users = useUsers((activity.data ?? []).map((a) => a.actorId));
 
   if (activity.isPending) return <CircularProgress size={24} />;
   if (activity.isError) return <Alert severity="error">{toUserMessage(activity.error)}</Alert>;
@@ -141,7 +156,7 @@ function ActivityTabContent({ item }: { item: DriveItem }) {
           {activity.data.map((entry) => (
             <ListItem key={entry.id} disableGutters alignItems="flex-start">
               <ListItemText
-                primary={describeActivity(entry, user?.id)}
+                primary={describeActivity(entry, user?.id, users.get(entry.actorId)?.displayName)}
                 secondary={
                   <Tooltip title={formatDateTime(entry.at)}>
                     <span>{formatModified(entry.at)}</span>
@@ -178,7 +193,7 @@ function VersionsTabContent({ item, actions }: { item: DriveItem; actions: Props
       <Button
         variant="outlined"
         startIcon={<UploadFileOutlinedIcon />}
-        disabled={item.trashedAt !== null}
+        disabled={item.trashedAt !== null || !canEdit(item)}
         onClick={() => actions.uploadVersion(item)}
         sx={{ alignSelf: 'flex-start' }}
       >
@@ -207,7 +222,7 @@ function VersionsTabContent({ item, actions }: { item: DriveItem; actions: Props
                       <DownloadIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  {!v.isCurrent && item.trashedAt === null && (
+                  {!v.isCurrent && item.trashedAt === null && canEdit(item) && (
                     <>
                       <Tooltip title="Khôi phục phiên bản này">
                         <IconButton

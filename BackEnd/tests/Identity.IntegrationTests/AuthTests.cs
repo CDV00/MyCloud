@@ -10,7 +10,7 @@ using MyCloud.Contracts.Events.Identity;
 
 namespace Identity.IntegrationTests;
 
-public sealed class AuthTests(IdentityApiFactory factory) : IClassFixture<IdentityApiFactory>
+public sealed partial class AuthTests(IdentityApiFactory factory) : IClassFixture<IdentityApiFactory>
 {
     private const string Password = "correct-horse-1";
     private const string Auth = IdentityApiFactory.AuthPath;

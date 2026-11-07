@@ -54,7 +54,8 @@ internal sealed class CopyItemCommandHandler(
     IFileVersionRepository versions,
     IStorageClient storage,
     UniqueNames uniqueNames,
-    DriveOptions options) : ICommandHandler<CopyItemCommand, ItemDto>
+    DriveOptions options,
+    ItemDtos dtos) : ICommandHandler<CopyItemCommand, ItemDto>
 {
     private const int ParallelCopies = 4;
 
@@ -80,8 +81,9 @@ internal sealed class CopyItemCommandHandler(
 
         DriveItem[] files = [.. descendants.Where(d => !d.IsFolder), .. source.IsFolder ? [] : new[] { source }];
         IReadOnlyDictionary<Guid, FileVersion> currentVersions = await LoadCurrentVersionsAsync(files, cancellationToken);
-        await EnsureQuotaAsync(files, cancellationToken);
-        IReadOnlyDictionary<Guid, CompletedBlob> blobs = await CopyBlobsAsync(files, currentVersions, cancellationToken);
+        // Bản sao thuộc chủ sở hữu thư mục đích (người trả dung lượng), kể cả khi nguồn là file được chia sẻ.
+        await EnsureQuotaAsync(target.OwnerId, files, cancellationToken);
+        IReadOnlyDictionary<Guid, CompletedBlob> blobs = await CopyBlobsAsync(target.OwnerId, files, currentVersions, cancellationToken);
 
         DriveItem Copy(DriveItem original, DriveItem parent, ItemName copyName)
         {
@@ -101,7 +103,7 @@ internal sealed class CopyItemCommandHandler(
             copies[original.Id] = Copy(original, copies[original.ParentId!.Value], ItemName.Create(original.Name));
         }
 
-        return ItemDto.From(top, starred: false);
+        return await dtos.ForAsync(top, cancellationToken);
     }
 
     private async Task<IReadOnlyDictionary<Guid, FileVersion>> LoadCurrentVersionsAsync(DriveItem[] files, CancellationToken ct)
@@ -114,23 +116,23 @@ internal sealed class CopyItemCommandHandler(
     }
 
     /// <summary>Báo lỗi ngay thay vì sao chép dở rồi mới hết dung lượng (Storage vẫn kiểm tra lại từng blob).</summary>
-    private async Task EnsureQuotaAsync(DriveItem[] files, CancellationToken ct)
+    private async Task EnsureQuotaAsync(Guid ownerId, DriveItem[] files, CancellationToken ct)
     {
         long total = files.Sum(f => f.SizeBytes);
-        if (total > 0 && (await storage.GetQuotaAsync(access.UserId, ct)).AvailableBytes < total)
+        if (total > 0 && (await storage.GetQuotaAsync(ownerId, ct)).AvailableBytes < total)
         {
             throw new DriveException.QuotaExceeded();
         }
     }
 
     private async Task<IReadOnlyDictionary<Guid, CompletedBlob>> CopyBlobsAsync(
-        DriveItem[] files, IReadOnlyDictionary<Guid, FileVersion> currentVersions, CancellationToken ct)
+        Guid ownerId, DriveItem[] files, IReadOnlyDictionary<Guid, FileVersion> currentVersions, CancellationToken ct)
     {
         var blobs = new System.Collections.Concurrent.ConcurrentDictionary<Guid, CompletedBlob>();
         await Parallel.ForEachAsync(
             files,
             new ParallelOptions { MaxDegreeOfParallelism = ParallelCopies, CancellationToken = ct },
-            async (file, token) => blobs[file.Id] = await storage.CopyBlobAsync(access.UserId, currentVersions[file.Id].BlobId, token));
+            async (file, token) => blobs[file.Id] = await storage.CopyBlobAsync(ownerId, file.OwnerId, currentVersions[file.Id].BlobId, token));
         return blobs;
     }
 }

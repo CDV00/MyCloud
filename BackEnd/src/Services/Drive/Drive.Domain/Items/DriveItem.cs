@@ -316,6 +316,13 @@ public sealed class DriveItem : AggregateRoot<Guid>, IAuditableEntity
             throw new DriveException.ItemTrashed(newParent.Id);
         }
 
+        // Mọi item trong một cây thuộc chủ sở hữu của cây (người đó trả dung lượng) ⇒ người được chia sẻ không kéo
+        // item của người khác vào Drive của mình (hay ngược lại) — sao chép thay vì di chuyển.
+        if (newParent.OwnerId != OwnerId)
+        {
+            throw new DriveException.InvalidMove("Items can only be moved between folders of the same owner.");
+        }
+
         string oldPath = Path;
         int oldDepth = Depth;
         ParentId = newParent.Id;

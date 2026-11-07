@@ -1,6 +1,7 @@
 using Grpc.AspNetCore.Server;
 using Grpc.Net.ClientFactory;
 using Microsoft.Extensions.DependencyInjection;
+using MyCloud.BuildingBlocks.Authentication;
 
 namespace MyCloud.BuildingBlocks.Grpc;
 
@@ -31,6 +32,23 @@ public static class GrpcExtensions
             .AddGrpcClient<TClient>(o => o.Address = serviceUri)
             .AddInterceptor(InterceptorScope.Client, () => new ClientDeadlineInterceptor())
             .AddHttpMessageHandler<ForwardAuthorizationHandler>()
+            .RemoveAllResilienceHandlers();
+#pragma warning restore EXTEXP0001
+    }
+
+    /// <summary>
+    /// Như <see cref="AddGrpcClientDefaults{TClient}"/> nhưng gọi bằng <b>định danh của service</b> (client credentials)
+    /// thay vì token người dùng — cho các lời gọi thay mặt người khác (chủ sở hữu file, khách mở link). Service phải gọi
+    /// <c>AddServiceIdentity()</c>.
+    /// </summary>
+    public static IHttpClientBuilder AddGrpcServiceClient<TClient>(this IServiceCollection services, Uri serviceUri)
+        where TClient : class
+    {
+#pragma warning disable EXTEXP0001
+        return services
+            .AddGrpcClient<TClient>(o => o.Address = serviceUri)
+            .AddInterceptor(InterceptorScope.Client, () => new ClientDeadlineInterceptor())
+            .AddHttpMessageHandler<ServiceTokenHandler>()
             .RemoveAllResilienceHandlers();
 #pragma warning restore EXTEXP0001
     }

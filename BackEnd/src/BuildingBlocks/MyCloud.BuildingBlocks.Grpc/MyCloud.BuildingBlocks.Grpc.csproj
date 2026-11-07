@@ -9,5 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MyCloud.BuildingBlocks.Domain\MyCloud.BuildingBlocks.Domain.csproj" />
+    <ProjectReference Include="..\MyCloud.BuildingBlocks.Authentication\MyCloud.BuildingBlocks.Authentication.csproj" />
   </ItemGroup>
 </Project>

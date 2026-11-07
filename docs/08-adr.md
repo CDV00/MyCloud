@@ -173,3 +173,43 @@ Mỗi quyết định ghi: bối cảnh → quyết định → hệ quả. Tr�
 
 **Hệ quả**: + Không cần CORS ở dev, cookie và mọi request cùng origin; hoạt động qua localhost, tên miền và IP. + Byte của file vẫn không đi qua Gateway hay service .NET. − Khi tự host, băng thông upload/download đi qua reverse proxy (nginx), cần cấu hình không buffer và timeout phù hợp.
 
+
+---
+
+<a id="adr-014"></a>
+## ADR-014 — Quyền chia sẻ lưu trong PostgreSQL (thay OpenFGA), Drive là mặt tiền REST, định danh service
+
+**Trạng thái**: Accepted (Phase 4). Thay phần "OpenFGA" của ADR-007 (giữ fast-path chủ sở hữu và việc Drive gửi kèm tổ tiên).
+
+**Bối cảnh**: ADR-007 chọn OpenFGA và để ngỏ phương án dự phòng (ACL trong Postgres) nếu spike đầu Phase 4 cho thấy không
+phù hợp. Khi làm, mọi lần kiểm tra quyền đều do Drive gọi và Drive **luôn biết chủ sở hữu + danh sách tổ tiên** của item
+(materialized path). Với dữ liệu đó, "vai trò hiệu lực" chỉ là: chủ sở hữu? ⇒ owner; ngược lại max(vai trò của quyền
+trực tiếp trên item hoặc bất kỳ tổ tiên nào, vai trò của link còn hiệu lực). Đó là **một truy vấn** trên bảng `permissions`.
+OpenFGA khi đó chỉ lưu đúng các tuple quyền trực tiếp (tuple `parent` được thay bằng contextual tuples), nhưng thêm một
+thành phần hạ tầng, việc migrate model, và ghi kép DB ↔ OpenFGA (outbox tuple). "Được chia sẻ với tôi" phục vụ từ Search.
+
+Ngoài ra có hai việc mà chính sách "mọi service tự validate JWT của người dùng" không giải quyết được:
+- Người được chia sẻ tải file của chủ sở hữu — Storage kiểm tra `blob.owner == user` của token;
+- Khách mở link **ẩn danh** — không có token người dùng nào để chuyển tiếp.
+
+**Quyết định**:
+- **Sharing service** lưu `permissions` (người dùng × item × vai trò) và `share_links` (chỉ lưu SHA-256 của token;
+  mật khẩu băm PBKDF2, kết quả đúng được nhớ 10 phút) trong PostgreSQL `sharing`. Chỉ có **gRPC nội bộ**
+  (`sharing.v1.SharingService`): CheckAccess / BatchCheckAccess, List/Grant/Revoke, Create/List/Disable/ResolveLink.
+  Mọi request mang `ItemRef {item, owner, ancestors}` ⇒ Sharing **không giữ bản sao cây thư mục**, kế thừa đúng ngay cả
+  khi item vừa tạo / di chuyển; thu hồi có hiệu lực ở lần kiểm tra kế tiếp. Publish `ItemShared`, `ShareRoleChanged`,
+  `ShareRevoked` qua outbox; consume `ItemsPurged`.
+- **Drive là mặt tiền REST** cho chia sẻ (`/items/{id}/sharing|permissions|links`, `/public/links/{token}/...`): Drive đã
+  nạp item, biết tên / chủ sở hữu / tổ tiên và đã kiểm tra quyền chia sẻ ⇒ không có phụ thuộc vòng Drive ↔ Sharing.
+- **Định danh service**: Identity phát hành token OAuth 2.0 *client credentials* (`POST /connect/token`, ngoài `/api` nên
+  Gateway không định tuyến tới) cùng khoá RS256 / JWKS, `sub = svc:{clientId}`, scope `mycloud.internal`. Drive gọi
+  Storage / Sharing / Identity bằng token này (`AddGrpcServiceClient`), sau khi **chính Drive** đã quyết định quyền.
+  Storage: token người dùng ⇒ `user_id` phải là chính họ (như trước); token service ⇒ tin `user_id` (chủ sở hữu). gRPC
+  của Sharing và Identity chỉ nhận token service (policy `service`). Secret sinh bởi Aspire (parameter, user secrets).
+- Chủ sở hữu trả dung lượng cho mọi thứ trong cây của mình (upload của người chỉnh sửa ⇒ blob của chủ, `uploader_id`
+  = người upload để ký part); di chuyển chỉ trong cùng chủ sở hữu (sang Drive khác ⇒ sao chép).
+
+**Hệ quả**: + Ít hạ tầng hơn, một nguồn sự thật, không có đồng bộ tuple; quyền kế thừa và thu hồi luôn tức thì. + Service
+token mở đường cho job nền (sao chép thư mục lớn, zip — Phase 5). − Không có mô hình quan hệ khai báo (nhóm, domain,
+"chia sẻ cho cả công ty"): khi cần sẽ đánh giá lại OpenFGA — interface `IItemAuthorizer` / gRPC của Sharing giữ nguyên.
+− Drive được tin tưởng cao (token service vượt kiểm tra chủ sở hữu ở Storage): secret phải được bảo vệ, xoay vòng (Phase 6).

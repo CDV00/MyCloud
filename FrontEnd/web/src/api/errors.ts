@@ -8,7 +8,8 @@ const messages: Record<string, string> = {
   'DRIVE.NAME_CONFLICT': 'Thư mục này đã có mục cùng tên.',
   'DRIVE.INVALID_NAME':
     'Tên không hợp lệ (không được chứa dấu / hoặc dấu gạch chéo ngược, tối đa 255 ký tự).',
-  'DRIVE.INVALID_MOVE': 'Không thể di chuyển thư mục vào chính nó hoặc thư mục con của nó.',
+  'DRIVE.INVALID_MOVE':
+    'Không thể di chuyển tới đó (thư mục vào chính nó / thư mục con, hoặc sang Drive của người khác — hãy tạo bản sao).',
   'DRIVE.REVISION_MISMATCH': 'Mục này vừa được thay đổi ở nơi khác. Tải lại trang rồi thử lại.',
   'DRIVE.ITEM_NOT_FOUND': 'Không tìm thấy mục này (có thể đã bị xoá hoặc bạn không có quyền).',
   'DRIVE.ROOT_IMMUTABLE': 'Không thể thực hiện thao tác này với “Drive của tôi”.',
@@ -17,6 +18,11 @@ const messages: Record<string, string> = {
   'DRIVE.RESTORE_CONTAINING_FOLDER': 'Mục này bị xoá cùng thư mục chứa nó. Hãy khôi phục thư mục đó.',
   'DRIVE.VERSION_NOT_FOUND': 'Không tìm thấy phiên bản này (có thể đã bị xoá).',
   'DRIVE.CANNOT_DELETE_CURRENT_VERSION': 'Không thể xoá phiên bản hiện tại.',
+  'DRIVE.ACCESS_DENIED': 'Bạn không có quyền thực hiện thao tác này với mục này.',
+  'DRIVE.USER_NOT_FOUND': 'Không có tài khoản MyCloud nào dùng email này.',
+  'DRIVE.ALREADY_OWNER': 'Người này là chủ sở hữu, đã có toàn quyền.',
+  'DRIVE.LINK_NOT_FOUND': 'Đường liên kết không tồn tại, đã hết hạn hoặc đã bị tắt.',
+  'DRIVE.LINK_PASSWORD_REQUIRED': 'Đường liên kết này cần mật khẩu.',
   'DRIVE.COPY_TOO_LARGE': 'Thư mục quá lớn để sao chép một lần (tối đa 500 mục).',
   'STORAGE.QUOTA_EXCEEDED': 'Không đủ dung lượng trống cho tệp này.',
   'STORAGE.FILE_TOO_LARGE': 'Tệp vượt quá kích thước tối đa cho phép (5 GB).',

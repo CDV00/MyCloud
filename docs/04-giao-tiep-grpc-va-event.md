@@ -199,9 +199,10 @@ public abstract record IntegrationEvent
 | `FileVersionsDeleted` | Drive | ItemId, OwnerId, VersionIds, BlobIds, Revision | Storage (xoá blob, trả quota) |
 | `FileVersionAdded` | Drive | ItemId, VersionId, VersionNo, BlobId, SizeBytes, MimeType, By | Storage (claim blob), Media (thumbnail), Search |
 | `ItemAccessed` | Drive | ItemId, OwnerId, UserId, Action (open/download) — gộp 5 phút | Search (Gần đây) |
-| `ItemShared` | Sharing | ItemId, GranteeUserId, Role, SharedBy, Message | Search (access_grants), Notification |
-| `ShareRevoked` | Sharing | ItemId, GranteeUserId | Search |
-| `QuotaThresholdReached` | Storage | UserId, Percent | Notification |
+| `ItemShared` | Sharing | PermissionId, ItemId, OwnerId, ItemName, ItemKind, GranteeId, Role, SharedBy, Notify, Message, SharedByName, GranteeEmail | Search (access_grants), Notification |
+| `ShareRoleChanged` | Sharing | PermissionId, ItemId, GranteeId, Role, ChangedBy | Search |
+| `ShareRevoked` | Sharing | PermissionId, ItemId, GranteeId, RevokedBy | Search |
+| `QuotaThresholdReached` | Storage | UserId, Percent (80/90/100), UsedBytes, LimitBytes | Notification |
 | `ThumbnailGenerated` | Media | ItemId, VersionId, Sizes | Drive |
 | `MalwareDetected` | Media | ItemId, VersionId, Signature | Drive, Notification |
 

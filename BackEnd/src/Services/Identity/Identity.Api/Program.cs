@@ -2,9 +2,11 @@ using FluentValidation;
 using Identity.Api.Auth;
 using Identity.Api.Data;
 using Identity.Api.Keys;
+using Identity.Api.Services;
 using Identity.Api.Tokens;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using MyCloud.BuildingBlocks.Grpc;
 using MyCloud.BuildingBlocks.Messaging;
 using MyCloud.BuildingBlocks.Web;
 
@@ -31,12 +33,16 @@ builder.Services
     .AddEntityFrameworkStores<AppIdentityDbContext>();
 
 builder.AddTokenServices();
+builder.Services.AddOptions<ServiceClientOptions>().Bind(builder.Configuration.GetSection(ServiceClientOptions.SectionName));
+builder.Services.AddGrpcServerDefaults();
 builder.Services.AddValidatorsFromAssemblyContaining<AuthEndpoints>(includeInternalTypes: true);
 
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
 app.MapWebApiDefaults();
+app.MapServiceClientEndpoints();          // POST /connect/token: client credentials cho service (ADR-014)
+app.MapGrpcService<UserGrpcService>();    // endpoint "grpc" (HTTP/2), chỉ nội bộ
 
 if (app.Environment.IsDevelopment())
 {

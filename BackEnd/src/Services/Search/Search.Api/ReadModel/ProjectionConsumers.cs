@@ -188,6 +188,7 @@ public sealed class ItemProjectionConsumer(SearchDb db) :
         await db.Activity.DeleteManyAsync(
             Builders<ActivityDocument>.Filter.In(x => x.ItemId, e.ItemIds) & Builders<ActivityDocument>.Filter.Eq(x => x.OwnerId, e.OwnerId),
             ct);
+        await db.Grants.DeleteManyAsync(Builders<AccessGrantDocument>.Filter.In(x => x.ItemId, e.ItemIds), ct);
     }
 
     public async Task Consume(ConsumeContext<FileVersionAdded> context)

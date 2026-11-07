@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package mycloud.identity.v1;
+
+option csharp_namespace = "MyCloud.Contracts.Identity.V1";
+
+// Tra cứu người dùng cho các service khác (Drive: hộp thoại chia sẻ, hiển thị "Chủ sở hữu"). Chỉ gọi bằng định danh
+// service (client credentials) — người dùng tra email qua REST có rate limit riêng. docs/03 §2.
+service UserService {
+  // Tra CHÍNH XÁC một email (không phân biệt hoa thường). Không thấy ⇒ found = false (không phải lỗi).
+  rpc FindUserByEmail(FindUserByEmailRequest) returns (FindUserByEmailResponse);
+  // Tối đa 200 id; id không tồn tại bị bỏ qua.
+  rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse);
+}
+
+message UserInfo {
+  string id = 1;
+  string email = 2;
+  string display_name = 3;
+  string avatar_url = 4;
+}
+
+message FindUserByEmailRequest {
+  string email = 1;
+}
+
+message FindUserByEmailResponse {
+  bool found = 1;
+  UserInfo user = 2;
+}
+
+message BatchGetUsersRequest {
+  repeated string ids = 1;
+}
+
+message BatchGetUsersResponse {
+  repeated UserInfo users = 1;
+}

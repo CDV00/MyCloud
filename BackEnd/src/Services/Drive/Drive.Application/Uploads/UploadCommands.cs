@@ -55,8 +55,9 @@ internal sealed class StartUploadCommandHandler(
         ItemName? name = request.TargetItemId is null ? ItemName.Create(System.IO.Path.GetFileName(request.Name)) : null;
         string mimeType = string.IsNullOrWhiteSpace(request.MimeType) ? "application/octet-stream" : request.MimeType.Trim();
 
+        // Dung lượng tính cho chủ sở hữu thư mục / file (có thể khác người upload khi thư mục được chia sẻ quyền sửa).
         StorageUploadSession session = await storage.CreateUploadSessionAsync(
-            access.UserId, request.SizeBytes, mimeType, request.PublicBaseUrl, cancellationToken);
+            destination.OwnerId, access.UserId, request.SizeBytes, mimeType, request.PublicBaseUrl, cancellationToken);
 
         DateTimeOffset now = timeProvider.GetUtcNow();
         uploads.Add(name is { } fileName
@@ -102,7 +103,7 @@ internal sealed class CompleteUploadCommandHandler(
         if (upload.TargetItemId is { } targetId)
         {
             DriveItem file = await access.GetFileAsync(targetId, ItemPermission.Edit, cancellationToken);
-            CompletedBlob content = await storage.CompleteUploadAsync(access.UserId, upload.Id, request.Parts, cancellationToken);
+            CompletedBlob content = await storage.CompleteUploadAsync(file.OwnerId, upload.Id, request.Parts, cancellationToken);
             file.AddVersion(Guid.CreateVersion7(), content.BlobId, content.SizeBytes, upload.MimeType);
             await retention.ApplyAsync(file, cancellationToken);
             upload.MarkCompleted(file.Id);
@@ -110,14 +111,14 @@ internal sealed class CompleteUploadCommandHandler(
         }
 
         DriveItem parent = await access.GetFolderAsync(upload.ParentId, ItemPermission.Edit, cancellationToken);
-        CompletedBlob blob = await storage.CompleteUploadAsync(access.UserId, upload.Id, request.Parts, cancellationToken);
+        CompletedBlob blob = await storage.CompleteUploadAsync(parent.OwnerId, upload.Id, request.Parts, cancellationToken);
 
         ItemName name = await uniqueNames.ResolveAsync(parent.Id, ItemName.Create(upload.Name), isFile: true, cancellationToken);
         var created = DriveItem.CreateFile(Guid.CreateVersion7(), parent, name, Guid.CreateVersion7(), blob.BlobId, blob.SizeBytes, upload.MimeType);
         items.Add(created);
         upload.MarkCompleted(created.Id);
 
-        return ItemDto.From(created, starred: false);
+        return await dtos.ForAsync(created, cancellationToken);
     }
 
     private async Task<PendingUpload> FindOwnedAsync(Guid uploadId, CancellationToken ct)
@@ -129,7 +130,8 @@ internal sealed class CompleteUploadCommandHandler(
 
 public sealed record AbortUploadCommand(Guid UploadId) : ICommand;
 
-internal sealed class AbortUploadCommandHandler(ItemAccess access, IPendingUploadRepository uploads, IStorageClient storage)
+internal sealed class AbortUploadCommandHandler(
+    ItemAccess access, IPendingUploadRepository uploads, IDriveItemRepository items, IStorageClient storage)
     : ICommandHandler<AbortUploadCommand>
 {
     public async Task<Result> Handle(AbortUploadCommand request, CancellationToken cancellationToken)
@@ -142,7 +144,9 @@ internal sealed class AbortUploadCommandHandler(ItemAccess access, IPendingUploa
 
         if (upload.CompletedItemId is null)
         {
-            await storage.AbortUploadAsync(access.UserId, upload.Id, cancellationToken);
+            // Session của Storage thuộc chủ sở hữu thư mục đích (người được giữ chỗ dung lượng).
+            Guid owner = (await items.FindAsync(upload.ParentId, cancellationToken))?.OwnerId ?? upload.OwnerId;
+            await storage.AbortUploadAsync(owner, upload.Id, cancellationToken);
         }
 
         return Result.Success();
@@ -180,7 +184,10 @@ internal sealed class CreateDownloadLinkCommandHandler(
 
         DownloadLink link = await storage.GetDownloadUrlAsync(
             item.OwnerId, version.BlobId, item.Name, version.MimeType, request.Inline, request.PublicBaseUrl, cancellationToken);
-        await accessLog.RecordAsync(item, access.UserId, request.Inline ? AccessActions.Open : AccessActions.Download, cancellationToken);
+        if (access.OptionalUserId is { } userId) // khách mở link (ẩn danh) không có "Gần đây"
+        {
+            await accessLog.RecordAsync(item, userId, request.Inline ? AccessActions.Open : AccessActions.Download, cancellationToken);
+        }
         return new DownloadLinkDto(link.Url, link.ExpiresAt);
     }
 }

@@ -10,7 +10,8 @@ using GrpcCompletedPart = MyCloud.Contracts.Storage.V1.CompletedPart;
 namespace Drive.Infrastructure.Storage;
 
 /// <summary>
-/// Gọi Storage qua gRPC (h2c nội bộ). JWT của người dùng được chuyển tiếp (ForwardAuthorizationHandler).
+/// Gọi Storage qua gRPC (h2c nội bộ) bằng định danh service: Drive đã kiểm tra quyền và gọi thay chủ sở hữu file
+/// (ADR-014) — người được chia sẻ tải / upload vào thư mục của người khác.
 /// Lỗi gRPC được đổi lại thành lỗi nghiệp vụ kèm mã lỗi của Storage để client hiển thị đúng (vd vượt quota).
 /// </summary>
 internal sealed class GrpcStorageClient(StorageService.StorageServiceClient client) : IStorageClient
@@ -19,12 +20,13 @@ internal sealed class GrpcStorageClient(StorageService.StorageServiceClient clie
     private static readonly TimeSpan CompleteDeadline = TimeSpan.FromSeconds(60);
 
     public async Task<StorageUploadSession> CreateUploadSessionAsync(
-        Guid userId, long sizeBytes, string mimeType, string? publicBaseUrl, CancellationToken ct)
+        Guid ownerId, Guid uploaderId, long sizeBytes, string mimeType, string? publicBaseUrl, CancellationToken ct)
     {
         CreateUploadSessionResponse r = await CallAsync(() => client.CreateUploadSessionAsync(
             new CreateUploadSessionRequest
             {
-                UserId = userId.ToString(),
+                UserId = ownerId.ToString(),
+                UploaderId = uploaderId.ToString(),
                 SizeBytes = sizeBytes,
                 MimeType = mimeType,
                 PublicBaseUrl = publicBaseUrl ?? string.Empty,
@@ -71,11 +73,11 @@ internal sealed class GrpcStorageClient(StorageService.StorageServiceClient clie
         return new DownloadLink(r.Url, r.ExpiresAt.ToDateTimeOffset());
     }
 
-    public async Task<CompletedBlob> CopyBlobAsync(Guid userId, Guid sourceBlobId, CancellationToken ct)
+    public async Task<CompletedBlob> CopyBlobAsync(Guid userId, Guid sourceOwnerId, Guid sourceBlobId, CancellationToken ct)
     {
         // Sao chép phía server: object lớn (tới 5 GB) có thể mất vài giây.
         CopyBlobResponse r = await CallAsync(() => client.CopyBlobAsync(
-            new CopyBlobRequest { UserId = userId.ToString(), SourceBlobId = sourceBlobId.ToString() },
+            new CopyBlobRequest { UserId = userId.ToString(), SourceUserId = sourceOwnerId.ToString(), SourceBlobId = sourceBlobId.ToString() },
             deadline: DateTime.UtcNow + CompleteDeadline,
             cancellationToken: ct).ResponseAsync);
         return new CompletedBlob(Guid.Parse(r.BlobId), r.SizeBytes);

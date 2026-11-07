@@ -121,6 +121,8 @@ public sealed class SearchDb(IMongoDatabase database)
 
     public IMongoCollection<ActivityDocument> Activity { get; } = database.GetCollection<ActivityDocument>("activity");
 
+    public IMongoCollection<AccessGrantDocument> Grants { get; } = database.GetCollection<AccessGrantDocument>("access_grants");
+
     /// <summary>Guid lưu dạng UUID chuẩn; DateTimeOffset lưu dạng ngày giờ (so sánh được, dùng được cho TTL index).</summary>
     public static void RegisterSerializers()
     {
@@ -156,6 +158,14 @@ public sealed class SearchDb(IMongoDatabase database)
                 new CreateIndexModel<ActivityDocument>(activity.Ascending(x => x.ItemId).Descending(x => x.At)),
                 new CreateIndexModel<ActivityDocument>(activity.Ascending(x => x.AncestorIds).Descending(x => x.At)),
                 new CreateIndexModel<ActivityDocument>(activity.Ascending(x => x.At), new CreateIndexOptions { ExpireAfter = ActivityTtl }),
+            ],
+            cancellationToken);
+
+        var grants = Builders<AccessGrantDocument>.IndexKeys;
+        await Grants.Indexes.CreateManyAsync(
+            [
+                new CreateIndexModel<AccessGrantDocument>(grants.Ascending(x => x.UserId).Descending(x => x.SharedAt)),
+                new CreateIndexModel<AccessGrantDocument>(grants.Ascending(x => x.ItemId)),
             ],
             cancellationToken);
 

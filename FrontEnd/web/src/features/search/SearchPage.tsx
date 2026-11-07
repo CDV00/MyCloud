@@ -34,7 +34,7 @@ export default function SearchPage() {
   const enabled = q.trim().length > 0 || type !== null || range !== 'any';
   const results = useSearch(filters, enabled);
   const actions = useItemActions();
-  const items = (results.data?.pages.flatMap((p) => p.items) ?? []).map(hitToItem);
+  const items = (results.data?.pages.flatMap((p) => p.items) ?? []).map((hit) => hitToItem(hit));
   const selection = useSelection(items, JSON.stringify(filters));
   const [menu, setMenu] = useState<MenuState | null>(null);
 

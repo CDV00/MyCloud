@@ -5,7 +5,7 @@ import type { Category, SearchHit } from '../../api/search';
  * Kết quả của Search là bản chiếu rút gọn (không có revision, trạng thái sao…). Đổi sang dạng DriveItem để hiển thị
  * bằng cùng bảng; các thao tác cần dữ liệu đầy đủ (đổi tên, gắn sao) làm từ panel chi tiết hoặc trang thư mục.
  */
-export function hitToItem(hit: SearchHit): DriveItem {
+export function hitToItem(hit: SearchHit, role: DriveItem['role'] = 'viewer'): DriveItem {
   return {
     id: hit.id,
     parentId: hit.parentId,
@@ -20,6 +20,10 @@ export function hitToItem(hit: SearchHit): DriveItem {
     starred: false,
     trashedAt: null,
     versionNo: 0,
+    ownerId: hit.ownerId,
+    modifiedBy: null,
+    // Vai trò thật được Drive tính khi mở item; ở danh sách Search chỉ cần biết có phải của mình không.
+    role,
   };
 }
 

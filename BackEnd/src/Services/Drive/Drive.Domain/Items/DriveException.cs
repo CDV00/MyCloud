@@ -66,6 +66,33 @@ public static class DriveException
         public override string Code => "DRIVE.REVISION_MISMATCH";
     }
 
+    /// <summary>Thấy item nhưng vai trò không đủ cho thao tác (vd người xem muốn đổi tên).</summary>
+    public sealed class AccessDenied(Guid itemId) : ForbiddenException($"You do not have permission to do this on item '{itemId}'.")
+    {
+        public override string Code => "DRIVE.ACCESS_DENIED";
+    }
+
+    public sealed class UserNotFound() : NotFoundException("No MyCloud account uses this email address.")
+    {
+        public override string Code => "DRIVE.USER_NOT_FOUND";
+    }
+
+    public sealed class CannotShareWithOwner() : ConflictException("The owner already has full access to this item.")
+    {
+        public override string Code => "DRIVE.ALREADY_OWNER";
+    }
+
+    public sealed class LinkNotFound() : NotFoundException("This link does not exist, has expired or was turned off.")
+    {
+        public override string Code => "DRIVE.LINK_NOT_FOUND";
+    }
+
+    /// <summary>Link có mật khẩu: thiếu hoặc sai.</summary>
+    public sealed class LinkPasswordRequired() : ForbiddenException("This link is protected by a password.")
+    {
+        public override string Code => "DRIVE.LINK_PASSWORD_REQUIRED";
+    }
+
     /// <summary>Sửa / thêm vào item đang ở thùng rác — phải khôi phục trước.</summary>
     public sealed class ItemTrashed(Guid itemId) : ConflictException($"Item '{itemId}' is in the trash. Restore it first.")
     {

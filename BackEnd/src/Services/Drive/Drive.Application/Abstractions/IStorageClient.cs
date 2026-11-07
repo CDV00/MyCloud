@@ -22,12 +22,16 @@ public sealed record StorageQuota(long LimitBytes, long UsedBytes, long Reserved
 }
 
 /// <summary>
-/// Storage service (gRPC). Lỗi của Storage được chuyển thành exception nghiệp vụ tương ứng
+/// Storage service (gRPC, gọi bằng định danh service — ADR-014: Drive đã kiểm tra quyền, Storage tin <c>userId</c>
+/// là chủ sở hữu blob). Lỗi của Storage được chuyển thành exception nghiệp vụ tương ứng
 /// (vd vượt quota ⇒ <c>LimitExceededException</c> ⇒ HTTP 413).
 /// </summary>
 public interface IStorageClient
 {
-    Task<StorageUploadSession> CreateUploadSessionAsync(Guid userId, long sizeBytes, string mimeType, string? publicBaseUrl, CancellationToken ct);
+    /// <param name="ownerId">Người trả dung lượng (chủ sở hữu thư mục đích).</param>
+    /// <param name="uploaderId">Người đang upload (ký thêm part qua REST của Storage).</param>
+    Task<StorageUploadSession> CreateUploadSessionAsync(
+        Guid ownerId, Guid uploaderId, long sizeBytes, string mimeType, string? publicBaseUrl, CancellationToken ct);
 
     Task<CompletedBlob> CompleteUploadAsync(Guid userId, Guid sessionId, IReadOnlyList<CompletedPart> parts, CancellationToken ct);
 
@@ -37,7 +41,7 @@ public interface IStorageClient
         Guid userId, Guid blobId, string fileName, string mimeType, bool inline, string? publicBaseUrl, CancellationToken ct);
 
     /// <summary>Sao chép phía server; blob mới tính quota của <paramref name="userId"/> và phải được claim (FileVersionAdded).</summary>
-    Task<CompletedBlob> CopyBlobAsync(Guid userId, Guid sourceBlobId, CancellationToken ct);
+    Task<CompletedBlob> CopyBlobAsync(Guid userId, Guid sourceOwnerId, Guid sourceBlobId, CancellationToken ct);
 
     Task<StorageQuota> GetQuotaAsync(Guid userId, CancellationToken ct);
 }

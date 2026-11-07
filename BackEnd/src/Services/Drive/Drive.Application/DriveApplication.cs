@@ -13,7 +13,7 @@ public static class DriveApplication
     /// <summary>Dịch vụ dùng chung của tầng Application (MediatR + validator đăng ký qua AddApplicationDefaults).</summary>
     public static IServiceCollection AddDriveApplication(this IServiceCollection services)
     {
-        services.AddScoped<IItemAuthorizer, OwnerOnlyItemAuthorizer>(); // Phase 4: thay bằng authorizer gọi Sharing
+        services.AddScoped<LinkContext>();
         services.AddScoped<ItemAccess>();
         services.AddScoped<UniqueNames>();
         services.AddScoped<ItemDtos>();

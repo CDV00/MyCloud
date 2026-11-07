@@ -15,8 +15,13 @@ public sealed class FakeStorageClient : IStorageClient
 
     public string? LastPublicBaseUrl { get; private set; }
 
-    public Task<StorageUploadSession> CreateUploadSessionAsync(Guid userId, long sizeBytes, string mimeType, string? publicBaseUrl, CancellationToken ct)
+    /// <summary>(chủ sở hữu trả dung lượng, người upload) của từng session — kiểm tra upload vào thư mục được chia sẻ.</summary>
+    public ConcurrentDictionary<Guid, (Guid OwnerId, Guid UploaderId)> SessionOwners { get; } = new();
+
+    public Task<StorageUploadSession> CreateUploadSessionAsync(
+        Guid ownerId, Guid uploaderId, long sizeBytes, string mimeType, string? publicBaseUrl, CancellationToken ct)
     {
+        Guid userId = ownerId;
         if (sizeBytes > QuotaBytes)
         {
             throw new QuotaExceeded();
@@ -25,6 +30,7 @@ public sealed class FakeStorageClient : IStorageClient
         LastPublicBaseUrl = publicBaseUrl;
         Guid sessionId = Guid.CreateVersion7();
         _sessions[sessionId] = (userId, sizeBytes, Guid.CreateVersion7());
+        SessionOwners[sessionId] = (ownerId, uploaderId);
         return Task.FromResult(new StorageUploadSession(
             sessionId, _sessions[sessionId].BlobId, 8 * 1024 * 1024, 1,
             [new PresignedPart(1, $"{publicBaseUrl}/mycloud-blobs/u/{userId:N}/{sessionId:N}?partNumber=1")],
@@ -62,7 +68,7 @@ public sealed class FakeStorageClient : IStorageClient
 
     public long UsedBytes { get; set; }
 
-    public Task<CompletedBlob> CopyBlobAsync(Guid userId, Guid sourceBlobId, CancellationToken ct)
+    public Task<CompletedBlob> CopyBlobAsync(Guid userId, Guid sourceOwnerId, Guid sourceBlobId, CancellationToken ct)
     {
         long size = _blobSizes.GetValueOrDefault(sourceBlobId);
         if (size > QuotaBytes - UsedBytes)

@@ -20,7 +20,19 @@ export interface DriveItem {
   trashedAt: string | null;
   /** Số version hiện tại (file); 0 với thư mục. */
   versionNo: number;
+  ownerId: string;
+  modifiedBy: string | null;
+  /** Vai trò của người đang xem: quyết định thao tác nào được hiện. */
+  role: Role;
 }
+
+export type Role = 'owner' | 'editor' | 'commenter' | 'viewer' | 'none';
+
+/** Sửa được (đổi tên, di chuyển, tải lên bên trong, version). */
+export const canEdit = (item: Pick<DriveItem, 'role'>) => item.role === 'owner' || item.role === 'editor';
+
+/** Thùng rác / xoá vĩnh viễn: chỉ chủ sở hữu. */
+export const canManage = (item: Pick<DriveItem, 'role'>) => item.role === 'owner';
 
 export interface FileVersion {
   id: string;
@@ -148,3 +160,96 @@ export const restoreVersion = (id: string, versionId: string) =>
 
 export const deleteVersion = (id: string, versionId: string) =>
   apiFetch(`${DRIVE}/items/${id}/versions/${versionId}`, { method: 'DELETE' });
+
+// --- Chia sẻ (Drive là mặt tiền, Sharing service lưu quyền — ADR-014) ---
+
+export type GrantRole = 'viewer' | 'commenter' | 'editor';
+
+export interface Person {
+  id: string;
+  displayName: string;
+  email: string;
+  avatarUrl: string | null;
+}
+
+export interface SharePermission {
+  id: string;
+  user: Person;
+  role: GrantRole;
+  /** Có giá trị ⇒ kế thừa từ thư mục này (đổi / thu hồi ở thư mục đó). */
+  inheritedFrom: { id: string; name: string } | null;
+}
+
+export interface ShareLink {
+  id: string;
+  role: GrantRole;
+  hasPassword: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface SharingInfo {
+  owner: Person | null;
+  myRole: Role;
+  canShare: boolean;
+  permissions: SharePermission[];
+  links: ShareLink[];
+}
+
+export const getSharing = (id: string) => apiFetch<SharingInfo>(`${DRIVE}/items/${id}/sharing`);
+
+export const shareItem = (
+  id: string,
+  body: { email: string; role: GrantRole; notify: boolean; message?: string },
+) => apiFetch<SharePermission>(`${DRIVE}/items/${id}/permissions`, { method: 'POST', json: body });
+
+export const changePermission = (id: string, permissionId: string, role: GrantRole) =>
+  apiFetch(`${DRIVE}/items/${id}/permissions/${permissionId}`, { method: 'PATCH', json: { role } });
+
+export const revokePermission = (id: string, permissionId: string) =>
+  apiFetch(`${DRIVE}/items/${id}/permissions/${permissionId}`, { method: 'DELETE' });
+
+export const createLink = (
+  id: string,
+  body: { role: GrantRole; password?: string; expiresAt?: string | null },
+) =>
+  apiFetch<{ link: ShareLink; token: string }>(`${DRIVE}/items/${id}/links`, { method: 'POST', json: body });
+
+export const disableLink = (id: string, linkId: string) =>
+  apiFetch(`${DRIVE}/items/${id}/links/${linkId}`, { method: 'DELETE' });
+
+/** Địa chỉ trang mở link (cùng origin với web app). */
+export const linkUrl = (token: string) => `${window.location.origin}/s/${token}`;
+
+// --- Truy cập qua link (ẩn danh được; mật khẩu trong header, không trên URL) ---
+
+const publicLink = (token: string) => `${DRIVE}/public/links/${encodeURIComponent(token)}`;
+
+const linkHeaders = (password?: string | null) => (password ? { 'X-Link-Password': password } : undefined);
+
+export const openLink = (token: string, password?: string | null) =>
+  apiFetch<DriveItem>(publicLink(token), { headers: linkHeaders(password) });
+
+export const getLinkedItem = (token: string, id: string, password?: string | null) =>
+  apiFetch<DriveItem>(`${publicLink(token)}/items/${id}`, { headers: linkHeaders(password) });
+
+export const listLinkedChildren = (
+  token: string,
+  id: string,
+  password?: string | null,
+  pageToken?: string | null,
+) =>
+  apiFetch<ItemPage>(
+    `${publicLink(token)}/items/${id}/children${pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : ''}`,
+    { headers: linkHeaders(password) },
+  );
+
+export const getLinkedAncestors = (token: string, id: string, password?: string | null) =>
+  apiFetch<DriveItem[]>(`${publicLink(token)}/items/${id}/ancestors`, { headers: linkHeaders(password) });
+
+export const getLinkedDownloadUrl = (token: string, id: string, password?: string | null) =>
+  apiFetch<{ url: string; expiresAt: string }>(`${publicLink(token)}/items/${id}/download-url`, {
+    method: 'POST',
+    json: { inline: false },
+    headers: linkHeaders(password),
+  });

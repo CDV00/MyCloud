@@ -12,6 +12,12 @@ var postgres = builder.AddPostgres("postgres")
 var identityDb = postgres.AddDatabase("identitydb", databaseName: "identity");
 var driveDb = postgres.AddDatabase("drivedb", databaseName: "drive");
 var storageDb = postgres.AddDatabase("storagedb", databaseName: "storage");
+var sharingDb = postgres.AddDatabase("sharingdb", databaseName: "sharing");
+var notificationDb = postgres.AddDatabase("notificationdb", databaseName: "notification");
+
+// Secret client credentials của Drive (ADR-014): Aspire sinh ngẫu nhiên lần đầu và lưu trong user secrets của AppHost.
+var driveClientSecret = builder.AddParameter(
+    "drive-client-secret", new GenerateParameterDefault { MinLength = 40, Special = false }, secret: true, persist: true);
 
 var mongo = builder.AddMongoDB("mongo")
     .WithDataVolume()
@@ -47,7 +53,8 @@ var mailpit = builder.AddMailPit("mailpit", httpPort: 8025)
 // Mọi service khác tham chiếu "identity" để tải JWKS qua service discovery và tự validate token.
 var identity = builder.AddProject<Projects.Identity_Api>("identity")
     .WithReference(identityDb).WaitFor(identityDb)
-    .WithReference(rabbitmq).WaitFor(rabbitmq);
+    .WithReference(rabbitmq).WaitFor(rabbitmq)
+    .WithEnvironment("ServiceClients__Clients__drive__Secret", driveClientSecret);
 
 // Storage: REST (qua Gateway) + gRPC "grpc" (HTTP/2, chỉ Drive gọi) — cả hai khai báo ở Kestrel:Endpoints của project.
 var storage = builder.AddProject<Projects.Storage_Api>("storage")
@@ -56,14 +63,20 @@ var storage = builder.AddProject<Projects.Storage_Api>("storage")
     .WithReference(minio).WaitFor(minio)
     .WithReference(identity);
 
+var sharing = builder.AddProject<Projects.Sharing_Api>("sharing")
+    .WithReference(sharingDb).WaitFor(sharingDb)
+    .WithReference(rabbitmq).WaitFor(rabbitmq)
+    .WithReference(identity);
+
+// Drive gọi Storage / Sharing / Identity bằng định danh service của chính nó (client credentials).
 var drive = builder.AddProject<Projects.Drive_Api>("drive")
     .WithReference(driveDb).WaitFor(driveDb)
     .WithReference(rabbitmq).WaitFor(rabbitmq)
     .WithReference(storage).WaitFor(storage)
-    .WithReference(identity);
-
-var sharing = builder.AddProject<Projects.Sharing_Api>("sharing")
-    .WithReference(identity);
+    .WithReference(sharing).WaitFor(sharing)
+    .WithReference(identity).WaitFor(identity)
+    .WithEnvironment("ServiceIdentity__ClientId", "drive")
+    .WithEnvironment("ServiceIdentity__ClientSecret", driveClientSecret);
 
 var search = builder.AddProject<Projects.Search_Api>("search")
     .WithReference(searchDb).WaitFor(searchDb)
@@ -71,7 +84,9 @@ var search = builder.AddProject<Projects.Search_Api>("search")
     .WithReference(identity);
 
 var notification = builder.AddProject<Projects.Notification_Api>("notification")
+    .WithReference(notificationDb).WaitFor(notificationDb)
     .WithReference(rabbitmq).WaitFor(rabbitmq)
+    .WithReference(redis).WaitFor(redis) // SignalR backplane
     .WithReference(mailpit)
     .WithReference(identity);
 
