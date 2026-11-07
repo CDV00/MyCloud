@@ -25,7 +25,8 @@ public sealed record ItemDto(
     int VersionNo,
     Guid OwnerId,
     Guid? ModifiedBy,
-    string Role)
+    string Role,
+    bool HasThumbnail)
 {
     public static ItemDto From(DriveItem item, bool starred, AccessRole role) =>
         new(
@@ -44,7 +45,8 @@ public sealed record ItemDto(
             item.LastVersionNo,
             item.OwnerId,
             item.ModifiedBy ?? item.CreatedBy,
-            role.ToString().ToLowerInvariant());
+            role.ToString().ToLowerInvariant(),
+            item.HasThumbnail);
 
     public static ItemDto Owned(DriveItem item) => From(item, starred: false, AccessRole.Owner);
 }

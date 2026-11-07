@@ -24,6 +24,8 @@ public sealed class DriveApiFactory : WebApplicationFactory<ItemEndpoints>, IAsy
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
 
+    public const string CollaborationSecret = "test-collaboration-secret";
+
     public FakeStorageClient Storage { get; } = new();
 
     public SharingApiFactory Sharing { get; private set; } = null!;
@@ -45,6 +47,7 @@ public sealed class DriveApiFactory : WebApplicationFactory<ItemEndpoints>, IAsy
     {
         builder.UseEnvironment("Development"); // áp dụng migration lúc khởi động
         builder.UseSetting("ConnectionStrings:drivedb", Database("drive"));
+        builder.UseSetting("Collaboration:Secret", CollaborationSecret);
         builder.UseSetting("ConnectionStrings:rabbitmq", "amqp://guest:guest@localhost:5672");
 
         builder.ConfigureTestServices(services =>

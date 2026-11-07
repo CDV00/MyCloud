@@ -1,4 +1,4 @@
-import { abortUpload, completeUpload, startUpload, type DriveItem } from '../../api/drive';
+import { abortUpload, completeUpload, startUpload, type DriveItem, type UploadTarget } from '../../api/drive';
 import { signParts } from '../../api/storage';
 import { putPartWithXhr, sleep, uploadFile, waitForOnline, type UploadDependencies } from './multipartUpload';
 
@@ -173,3 +173,10 @@ export class UploadStore {
 }
 
 export const uploadStore = new UploadStore(browserDeps);
+
+/** Tải lên ngay và chờ kết quả (lưu từ trình sửa, tạo file mới) — không qua hàng đợi / bảng tiến độ. */
+export const uploadNow = (file: File, target: UploadTarget, signal?: AbortSignal) =>
+  uploadFile(file, target, browserDeps, {
+    signal: signal ?? new AbortController().signal,
+    onProgress: () => undefined,
+  });

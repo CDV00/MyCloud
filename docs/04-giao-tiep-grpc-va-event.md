@@ -197,13 +197,17 @@ public abstract record IntegrationEvent
 | `ItemRestored` | Drive | ItemId, OwnerId, ParentId, AncestorIds, Name (có thể đã đổi để không trùng), Revision, By | Search |
 | `ItemsPurged` | Drive | ItemIds, BlobIds (mọi version), OwnerId — tối đa 500 item / event | Storage (xoá blob, trả quota), Sharing (xoá tuple + quyền), Search |
 | `FileVersionsDeleted` | Drive | ItemId, OwnerId, VersionIds, BlobIds, Revision | Storage (xoá blob, trả quota) |
-| `FileVersionAdded` | Drive | ItemId, VersionId, VersionNo, BlobId, SizeBytes, MimeType, By | Storage (claim blob), Media (thumbnail), Search |
+| `FileVersionAdded` | Drive | ItemId, VersionId, VersionNo, BlobId, SizeBytes, MimeType, By, Source (upload / edit / restore / copy), RestoredFromVersionNo | Storage (claim blob), Media (thumbnail), Search |
+| `ItemCommentPosted` | Drive | CommentId, ItemId, OwnerId, ItemName, VersionId, VersionNo, ParentId, AuthorId, AuthorName, Excerpt, Recipients, Mentions | Notification (thông báo `comment`, phòng realtime) |
+| `ItemHistoryChanged` | Drive | ItemId, OwnerId, Kind (comment = sửa / xoá / xử lý tin nhắn; version_note = sửa ghi chú) | Notification (phòng realtime) |
 | `ItemAccessed` | Drive | ItemId, OwnerId, UserId, Action (open/download) — gộp 5 phút | Search (Gần đây) |
 | `ItemShared` | Sharing | PermissionId, ItemId, OwnerId, ItemName, ItemKind, GranteeId, Role, SharedBy, Notify, Message, SharedByName, GranteeEmail | Search (access_grants), Notification |
 | `ShareRoleChanged` | Sharing | PermissionId, ItemId, GranteeId, Role, ChangedBy | Search |
 | `ShareRevoked` | Sharing | PermissionId, ItemId, GranteeId, RevokedBy | Search |
 | `QuotaThresholdReached` | Storage | UserId, Percent (80/90/100), UsedBytes, LimitBytes | Notification |
-| `ThumbnailGenerated` | Media | ItemId, VersionId, Sizes | Drive |
+| `ThumbnailGenerated` | Media | ItemId, OwnerId, VersionId, BlobId, Sizes | Drive |
+| `ArchiveReady` | Storage | ArchiveId, UserId, Name, SizeBytes, FileCount, SkippedCount, ExpiresAt | Notification |
+| `ArchiveFailed` | Storage | ArchiveId, UserId, Name, Reason | Notification |
 | `MalwareDetected` | Media | ItemId, VersionId, Signature | Drive, Notification |
 
 > Event có thể chứa nhiều ID (`AffectedItemIds`) — với cây rất lớn, Drive chia thành nhiều event mỗi event ≤ 1.000 ID.

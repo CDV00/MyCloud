@@ -49,6 +49,7 @@
     <Project Path="tests/Drive.IntegrationTests/Drive.IntegrationTests.csproj" />
     <Project Path="tests/Gateway.Tests/Gateway.Tests.csproj" />
     <Project Path="tests/Identity.IntegrationTests/Identity.IntegrationTests.csproj" />
+    <Project Path="tests/Media.Worker.Tests/Media.Worker.Tests.csproj" />
     <Project Path="tests/MyCloud.Testing/MyCloud.Testing.csproj" />
     <Project Path="tests/Notification.IntegrationTests/Notification.IntegrationTests.csproj" />
     <Project Path="tests/Storage.IntegrationTests/Storage.IntegrationTests.csproj" />

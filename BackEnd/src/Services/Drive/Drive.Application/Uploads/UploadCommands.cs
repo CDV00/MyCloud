@@ -23,7 +23,10 @@ public sealed record UploadDto(
 /// <paramref name="TargetItemId"/> có giá trị ⇒ nội dung mới cho file đó (version kế tiếp), bỏ qua parent/name.
 /// </summary>
 public sealed record StartUploadCommand(
-    Guid? ParentId, string? Name, long SizeBytes, string? MimeType, string? PublicBaseUrl, Guid? TargetItemId = null)
+    Guid? ParentId, string? Name, long SizeBytes, string? MimeType, string? PublicBaseUrl, Guid? TargetItemId = null,
+    long? ExpectedRevision = null,
+    bool FromEditor = false,
+    string? Note = null)
     : ICommand<UploadDto>;
 
 internal sealed class StartUploadCommandValidator : AbstractValidator<StartUploadCommand>
@@ -52,6 +55,12 @@ internal sealed class StartUploadCommandHandler(
         DriveItem destination = request.TargetItemId is { } targetId
             ? await access.GetFileAsync(targetId, ItemPermission.Edit, cancellationToken)
             : await access.GetFolderAsync(request.ParentId!.Value, ItemPermission.Edit, cancellationToken);
+        if (request.TargetItemId is not null && request.ExpectedRevision is { } expected && expected != destination.Revision)
+        {
+            // Người khác đã lưu phiên bản mới sau khi trình sửa được mở.
+            throw new DriveException.RevisionMismatch(expected, destination.Revision);
+        }
+
         ItemName? name = request.TargetItemId is null ? ItemName.Create(System.IO.Path.GetFileName(request.Name)) : null;
         string mimeType = string.IsNullOrWhiteSpace(request.MimeType) ? "application/octet-stream" : request.MimeType.Trim();
 
@@ -62,7 +71,9 @@ internal sealed class StartUploadCommandHandler(
         DateTimeOffset now = timeProvider.GetUtcNow();
         uploads.Add(name is { } fileName
             ? PendingUpload.Start(session.SessionId, access.UserId, destination, fileName, request.SizeBytes, mimeType, now, session.ExpiresAt)
-            : PendingUpload.StartNewVersion(session.SessionId, access.UserId, destination, request.SizeBytes, mimeType, now, session.ExpiresAt));
+            : PendingUpload.StartNewVersion(
+                session.SessionId, access.UserId, destination, request.SizeBytes, mimeType, now, session.ExpiresAt,
+                request.FromEditor ? VersionSource.Edit : VersionSource.Upload, request.Note));
 
         return new UploadDto(session.SessionId, session.PartSizeBytes, session.PartCount, session.Parts, session.ExpiresAt);
     }
@@ -104,7 +115,7 @@ internal sealed class CompleteUploadCommandHandler(
         {
             DriveItem file = await access.GetFileAsync(targetId, ItemPermission.Edit, cancellationToken);
             CompletedBlob content = await storage.CompleteUploadAsync(file.OwnerId, upload.Id, request.Parts, cancellationToken);
-            file.AddVersion(Guid.CreateVersion7(), content.BlobId, content.SizeBytes, upload.MimeType);
+            file.AddVersion(Guid.CreateVersion7(), content.BlobId, content.SizeBytes, upload.MimeType, upload.Source, note: upload.Note);
             await retention.ApplyAsync(file, cancellationToken);
             upload.MarkCompleted(file.Id);
             return await dtos.ForAsync(file, cancellationToken);

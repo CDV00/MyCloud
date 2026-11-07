@@ -4,6 +4,7 @@ using MyCloud.Contracts.Events.Drive;
 using MyCloud.Contracts.Events.Identity;
 using Storage.Api.Data;
 using Storage.Api.ObjectStorage;
+using Storage.Api.Thumbnails;
 
 namespace Storage.Api.Messaging;
 
@@ -67,7 +68,9 @@ public sealed class BlobReclaimer(StorageDbContext db, QuotaStore quotas, S3Obje
             return 0;
         }
 
-        await s3.DeleteManyAsync(blobs.Select(b => b.ObjectKey).ToArray(), ct);
+        // Kèm thumbnail của blob (Media Worker, ADR-015) — object không tồn tại được coi là đã xoá.
+        await s3.DeleteManyAsync(
+            blobs.SelectMany(b => ThumbnailStore.KeysFor(b.Id).Prepend(b.ObjectKey)).ToArray(), ct);
 
         int deleted = 0;
         foreach (Blob blob in blobs)

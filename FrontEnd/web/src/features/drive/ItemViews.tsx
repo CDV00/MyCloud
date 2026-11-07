@@ -13,9 +13,10 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import type { MouseEvent } from 'react';
+import { useState, type MouseEvent } from 'react';
 import type { DriveItem } from '../../api/drive';
 import { formatModified, formatSize } from '../../lib/format';
+import { useThumbnails, type ThumbnailFetcher } from '../media/useThumbnails';
 import { FileIcon } from './FileIcon';
 
 export interface ItemViewProps {
@@ -27,6 +28,29 @@ export interface ItemViewProps {
   onMenu(item: DriveItem, anchor: HTMLElement | { top: number; left: number }): void;
   /** Cột ngày: mặc định "Sửa đổi lần cuối"; thùng rác dùng "Ngày xoá", Gần đây dùng "Lần mở gần nhất". */
   dateColumn?: { label: string; value(item: DriveItem): string | null };
+  /** Lấy URL thumbnail (mặc định: API của Drive; trang link công khai truyền API của link). */
+  thumbnailFetcher?: ThumbnailFetcher;
+  thumbnailScope?: string;
+}
+
+/** Ảnh thu nhỏ (Media Worker) nếu có; lỗi tải ảnh / chưa có ⇒ biểu tượng loại file. */
+function Preview({ item, url }: { item: DriveItem; url: string | undefined }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  if (url && failed !== url) {
+    return (
+      <Box
+        component="img"
+        src={url}
+        alt=""
+        loading="lazy"
+        draggable={false}
+        onError={() => setFailed(url)}
+        sx={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 2 }}
+      />
+    );
+  }
+
+  return <FileIcon item={item} sx={{ fontSize: 56, opacity: 0.8 }} />;
 }
 
 const modifiedColumn = { label: 'Sửa đổi lần cuối', value: (item: DriveItem) => item.modifiedAt };
@@ -132,6 +156,7 @@ export function ItemTable(props: ItemViewProps) {
 export function ItemGrid(props: ItemViewProps) {
   const folders = props.items.filter((i) => i.kind === 'folder');
   const files = props.items.filter((i) => i.kind === 'file');
+  const thumbnails = useThumbnails(files, { fetcher: props.thumbnailFetcher, scope: props.thumbnailScope });
 
   const card = (item: DriveItem, big: boolean) => {
     const isSelected = props.selected.has(item.id);
@@ -168,9 +193,10 @@ export function ItemGrid(props: ItemViewProps) {
                 bgcolor: 'background.paper',
                 display: 'grid',
                 placeItems: 'center',
+                overflow: 'hidden',
               }}
             >
-              <FileIcon item={item} sx={{ fontSize: 56, opacity: 0.8 }} />
+              <Preview item={item} url={thumbnails.get(item.id)} />
             </Box>
           )}
         </CardActionArea>

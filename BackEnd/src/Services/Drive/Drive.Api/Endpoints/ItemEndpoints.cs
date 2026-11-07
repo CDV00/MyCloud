@@ -22,6 +22,9 @@ public sealed record DownloadUrlRequest(bool Inline = false, Guid? VersionId = n
 
 public sealed record CopyItemRequest(Guid? TargetParentId = null, string? Name = null);
 
+/// <param name="Note">Lý do khôi phục.</param>
+public sealed record RestoreVersionRequest(string? Note = null);
+
 /// <summary>Cây thư mục và file (docs/03 §3). Mọi endpoint yêu cầu đăng nhập; item của người khác ⇒ 404.</summary>
 public sealed class ItemEndpoints : ICarterModule
 {
@@ -166,8 +169,9 @@ public sealed class ItemEndpoints : ICarterModule
     private static async Task<IResult> ListVersionsAsync(Guid itemId, ISender sender, CancellationToken ct) =>
         (await sender.Send(new ListVersionsQuery(itemId), ct)).ToHttpResult();
 
-    private static async Task<IResult> RestoreVersionAsync(Guid itemId, Guid versionId, ISender sender, HttpResponse response, CancellationToken ct) =>
-        ItemResult(await sender.Send(new RestoreVersionCommand(itemId, versionId), ct), response);
+    private static async Task<IResult> RestoreVersionAsync(
+        Guid itemId, Guid versionId, RestoreVersionRequest? request, ISender sender, HttpResponse response, CancellationToken ct) =>
+        ItemResult(await sender.Send(new RestoreVersionCommand(itemId, versionId, request?.Note), ct), response);
 
     private static async Task<IResult> DeleteVersionAsync(Guid itemId, Guid versionId, ISender sender, CancellationToken ct) =>
         (await sender.Send(new DeleteVersionCommand(itemId, versionId), ct)).ToHttpResult();

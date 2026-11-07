@@ -73,6 +73,30 @@ internal sealed class GrpcStorageClient(StorageService.StorageServiceClient clie
         return new DownloadLink(r.Url, r.ExpiresAt.ToDateTimeOffset());
     }
 
+    public async Task<ThumbnailLinks> GetThumbnailUrlsAsync(
+        IReadOnlyList<Guid> blobIds, int size, string? publicBaseUrl, CancellationToken ct)
+    {
+        var request = new GetThumbnailUrlsRequest { Size = size, PublicBaseUrl = publicBaseUrl ?? string.Empty };
+        request.BlobIds.AddRange(blobIds.Select(id => id.ToString()));
+        GetThumbnailUrlsResponse r = await CallAsync(() => client.GetThumbnailUrlsAsync(request, cancellationToken: ct).ResponseAsync);
+        return new ThumbnailLinks(r.Urls.ToArray(), r.ExpiresAt.ToDateTimeOffset());
+    }
+
+    public async Task<Guid> CreateArchiveAsync(Guid userId, string name, IReadOnlyList<Application.Abstractions.ArchiveEntry> entries, CancellationToken ct)
+    {
+        var request = new CreateArchiveRequest { UserId = userId.ToString(), Name = name };
+        request.Entries.AddRange(entries.Select(e => new MyCloud.Contracts.Storage.V1.ArchiveEntry
+        {
+            Path = e.Path,
+            BlobId = e.BlobId?.ToString() ?? string.Empty,
+            SizeBytes = e.SizeBytes,
+            MimeType = e.MimeType ?? string.Empty,
+        }));
+        CreateArchiveResponse r = await CallAsync(() => client.CreateArchiveAsync(
+            request, deadline: DateTime.UtcNow + CompleteDeadline, cancellationToken: ct).ResponseAsync);
+        return Guid.Parse(r.ArchiveId);
+    }
+
     public async Task<CompletedBlob> CopyBlobAsync(Guid userId, Guid sourceOwnerId, Guid sourceBlobId, CancellationToken ct)
     {
         // Sao chép phía server: object lớn (tới 5 GB) có thể mất vài giây.

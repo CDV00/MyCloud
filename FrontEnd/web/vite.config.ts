@@ -19,7 +19,16 @@ export default defineConfig({
     proxy: {
       // ws: SignalR (thông báo realtime) đi qua cùng proxy.
       '/api': { target: gatewayUrl, xfwd: true, ws: true },
-      '/mycloud-blobs': { target: objectStorageUrl, changeOrigin: false },
+      '/mycloud-blobs': {
+        target: objectStorageUrl,
+        changeOrigin: false,
+        // File người dùng cùng origin với app: mở trực tiếp file HTML/SVG cũng chỉ chạy trong sandbox (ADR-015).
+        configure: (proxy) =>
+          proxy.on('proxyRes', (res) => {
+            res.headers['content-security-policy'] = 'sandbox';
+            res.headers['x-content-type-options'] = 'nosniff';
+          }),
+      },
     },
   },
   build: {

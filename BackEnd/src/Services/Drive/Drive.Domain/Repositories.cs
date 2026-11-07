@@ -1,3 +1,4 @@
+using Drive.Domain.Comments;
 using Drive.Domain.Items;
 using Drive.Domain.Stars;
 using Drive.Domain.Uploads;
@@ -24,6 +25,9 @@ public interface IDriveItemRepository
     /// <paramref name="exceptItemId"/>). Item trong thùng rác không giữ tên.
     /// </summary>
     Task<bool> NameExistsAsync(Guid parentId, string nameKey, Guid? exceptItemId, CancellationToken ct);
+
+    /// <summary>Item chưa bị xoá trong thư mục có khoá tên thuộc <paramref name="nameKeys"/>.</summary>
+    Task<IReadOnlyList<DriveItem>> FindChildrenByNameKeysAsync(Guid parentId, IReadOnlyCollection<string> nameKeys, CancellationToken ct);
 
     /// <summary>Các khoá tên (item chưa bị xoá) trong thư mục bắt đầu bằng <paramref name="keyPrefix"/> — để chọn tên "(n)".</summary>
     Task<IReadOnlySet<string>> NameKeysStartingWithAsync(Guid parentId, string keyPrefix, CancellationToken ct);
@@ -63,6 +67,19 @@ public interface IFileVersionRepository
     Task<IReadOnlyList<FileVersion>> ListAsync(Guid itemId, CancellationToken ct);
 
     void Remove(FileVersion version);
+}
+
+public interface IItemCommentRepository
+{
+    Task<ItemComment?> FindAsync(Guid commentId, CancellationToken ct);
+
+    /// <summary>Mọi tin nhắn của tệp, cũ trước.</summary>
+    Task<IReadOnlyList<ItemComment>> ListAsync(Guid itemId, int take, CancellationToken ct);
+
+    /// <summary>Người viết trong luồng (gốc + trả lời) — nhận thông báo khi luồng có tin mới.</summary>
+    Task<IReadOnlyList<Guid>> ThreadParticipantsAsync(Guid rootId, CancellationToken ct);
+
+    void Add(ItemComment comment);
 }
 
 public interface IStarRepository

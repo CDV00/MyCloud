@@ -38,6 +38,22 @@ public sealed class StorageOptions
 
     public TimeSpan MaintenanceInterval { get; set; } = TimeSpan.FromMinutes(5);
 
+    /// <summary>URL thumbnail (trình duyệt cache trong thời gian này).</summary>
+    public TimeSpan ThumbnailUrlTtl { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>Tệp zip được giữ trong khoảng này rồi bị xoá (không tính quota).</summary>
+    public TimeSpan ArchiveTtl { get; set; } = TimeSpan.FromHours(24);
+
+    [Range(1, long.MaxValue)]
+    public long MaxArchiveBytes { get; set; } = 10L * 1024 * 1024 * 1024;
+
+    [Range(1, 100_000)]
+    public int MaxArchiveEntries { get; set; } = 10_000;
+
+    /// <summary>Số tệp zip được nén đồng thời trên mỗi instance.</summary>
+    [Range(1, 16)]
+    public int ArchiveConcurrency { get; set; } = 2;
+
     /// <summary>Số URL part ký sẵn khi tạo session; phần còn lại client xin thêm.</summary>
     [Range(1, 1000)]
     public int InitialSignedParts { get; set; } = 50;

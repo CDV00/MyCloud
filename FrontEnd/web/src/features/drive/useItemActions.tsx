@@ -11,8 +11,19 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { copyItem, purgeItem, restoreItem, setStar, trashItem, type DriveItem } from '../../api/drive';
+import {
+  copyItem,
+  getDownloadUrl,
+  purgeItem,
+  restoreItem,
+  setStar,
+  trashItem,
+  type DriveItem,
+} from '../../api/drive';
 import { toUserMessage } from '../../api/errors';
+import { archiveStore } from '../archive/archiveStore';
+import { editorStore } from '../office/editorStore';
+import { FilePreview } from '../preview/FilePreview';
 import { uploadStore } from '../upload/uploadStore';
 import { DetailsPanel, type DetailsTab } from './DetailsPanel';
 import { downloadItem, folderPath } from './download';
@@ -28,8 +39,13 @@ interface Notice {
 }
 
 export interface ItemActions {
+  /** Thư mục ⇒ mở; file ⇒ xem trước (chuyển qua lại giữa các file của danh sách đang xem). */
   open(item: DriveItem): void;
   download(item: DriveItem, versionId?: string): void;
+  /** Mở trình sửa (văn bản, CSV, Excel, Word) — lưu thành phiên bản mới. */
+  edit(item: Pick<DriveItem, 'id' | 'name'>): void;
+  /** Một file ⇒ tải thẳng; thư mục / nhiều mục ⇒ tệp zip tạo trong nền. */
+  downloadMany(items: DriveItem[]): void;
   rename(item: DriveItem): void;
   move(items: DriveItem[]): void;
   copy(item: DriveItem): void;
@@ -49,7 +65,12 @@ export interface ItemActions {
 const plural = (items: DriveItem[]) => (items.length === 1 ? `“${items[0]!.name}”` : `${items.length} mục`);
 
 /** Mọi thao tác trên item dùng chung cho các trang (Drive của tôi, Có gắn dấu sao, Gần đây, Tìm kiếm, Thùng rác). */
-export function useItemActions(options: { onChanged?: () => void } = {}): ItemActions {
+export function useItemActions(
+  options: {
+    onChanged?: () => void;
+    /** Danh sách đang hiển thị — để xem trước file kế tiếp. */ items?: DriveItem[];
+  } = {},
+): ItemActions {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const versionInput = useRef<HTMLInputElement>(null);
@@ -62,6 +83,7 @@ export function useItemActions(options: { onChanged?: () => void } = {}): ItemAc
   const [sharing, setSharing] = useState<Pick<DriveItem, 'id' | 'name'> | null>(null);
   const [purging, setPurging] = useState<DriveItem[]>([]);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [preview, setPreview] = useState<{ items: DriveItem[]; index: number } | null>(null);
 
   const changed = () => {
     refreshDrive(queryClient);
@@ -79,12 +101,23 @@ export function useItemActions(options: { onChanged?: () => void } = {}): ItemAc
     }
   }
 
-  const actions: ItemActions = {
+  const base: Omit<ItemActions, 'elements'> = {
     open(item) {
-      if (item.kind === 'folder') navigate(folderPath(item));
-      else void run(() => downloadItem(item.id));
+      if (item.kind === 'folder') {
+        navigate(folderPath(item));
+        return;
+      }
+
+      const files = (options.items ?? []).filter((i) => i.kind === 'file');
+      const index = files.findIndex((i) => i.id === item.id);
+      setPreview(index >= 0 ? { items: files, index } : { items: [item], index: 0 });
     },
     download: (item, versionId) => void run(() => downloadItem(item.id, versionId)),
+    edit: (item) => editorStore.open(item),
+    downloadMany(items) {
+      if (items.length === 1 && items[0]!.kind === 'file') base.download(items[0]!);
+      else void archiveStore.request(items);
+    },
     rename: setRenaming,
     move: setMoving,
     copy: (item) =>
@@ -101,7 +134,7 @@ export function useItemActions(options: { onChanged?: () => void } = {}): ItemAc
       void run(() => Promise.all(items.map((i) => trashItem(i.id))), {
         text: `Đã chuyển ${plural(items)} vào thùng rác`,
         severity: 'info',
-        undo: () => actions.restore(items),
+        undo: () => base.restore(items),
       }),
     restore: (items) =>
       void run(() => Promise.all(items.map((i) => restoreItem(i.id))), {
@@ -118,11 +151,25 @@ export function useItemActions(options: { onChanged?: () => void } = {}): ItemAc
     showLocation: (item) => {
       if (item.parentId) navigate(`/my-drive/folders/${item.parentId}`);
     },
-    elements: null,
   };
 
-  actions.elements = (
+  // Panel chi tiết gọi lại các thao tác (không cần phần tử giao diện).
+  const panelActions: ItemActions = { ...base, elements: null };
+
+  const elements = (
     <>
+      <FilePreview
+        items={preview?.items ?? []}
+        index={preview?.index ?? null}
+        onIndexChange={(index) => setPreview((p) => (index === null || !p ? null : { ...p, index }))}
+        getUrl={async (item) => (await getDownloadUrl(item.id, { inline: true })).url}
+        onDownload={(item) => base.download(item)}
+        onEdit={(item) => {
+          setPreview(null);
+          editorStore.open(item);
+        }}
+        history
+      />
       <RenameDialog item={renaming} onClose={() => setRenaming(null)} />
       <MoveDialog items={moving} onClose={() => setMoving([])} />
       <ShareDialog item={sharing} onClose={() => setSharing(null)} />
@@ -131,7 +178,7 @@ export function useItemActions(options: { onChanged?: () => void } = {}): ItemAc
         tab={details?.tab ?? 'details'}
         onTabChange={(tab) => setDetails((d) => (d ? { ...d, tab } : d))}
         onClose={() => setDetails(null)}
-        actions={actions}
+        actions={panelActions}
       />
       <Dialog open={purging.length > 0} onClose={() => setPurging([])} maxWidth="xs">
         <DialogTitle>Xoá vĩnh viễn?</DialogTitle>
@@ -201,5 +248,5 @@ export function useItemActions(options: { onChanged?: () => void } = {}): ItemAc
     </>
   );
 
-  return actions;
+  return { ...base, elements };
 }

@@ -40,7 +40,8 @@ public sealed class QueryEndpoints : ICarterModule
         string? PreviousName,
         string? FromFolder,
         string? ToFolder,
-        int? VersionNo);
+        int? VersionNo,
+        int? RestoredFromVersionNo);
 
     public void AddRoutes(IEndpointRouteBuilder app)
     {
@@ -173,10 +174,11 @@ public sealed class QueryEndpoints : ICarterModule
 
         List<ActivityDocument> entries = await db.Activity.Find(filter).SortByDescending(x => x.At).Limit(limit).ToListAsync(ct);
         return Results.Ok(entries.Select(a => new ActivityEntry(
-            a.Id, a.ItemId, a.Kind, a.Name, a.ActorId, a.Action, a.At, a.PreviousName, a.FromFolder, a.ToFolder, a.VersionNo)));
+            a.Id, a.ItemId, a.Kind, a.Name, a.ActorId, a.Action, a.At, a.PreviousName, a.FromFolder, a.ToFolder, a.VersionNo,
+            a.RestoredFromVersionNo)));
     }
 
-    private static SearchHit ToHit(ItemDocument d) =>
+    internal static SearchHit ToHit(ItemDocument d) =>
         new(d.Id, d.ParentId, d.Kind, d.Name, d.MimeType, d.Category, d.SizeBytes, d.UpdatedAt, d.OwnerId);
 
     /// <summary>"Được chia sẻ với tôi": item được chia sẻ trực tiếp (không liệt kê từng item con), mới chia sẻ trước.</summary>

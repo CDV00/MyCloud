@@ -24,6 +24,7 @@ export function hitToItem(hit: SearchHit, role: DriveItem['role'] = 'viewer'): D
     modifiedBy: null,
     // Vai trò thật được Drive tính khi mở item; ở danh sách Search chỉ cần biết có phải của mình không.
     role,
+    hasThumbnail: false,
   };
 }
 

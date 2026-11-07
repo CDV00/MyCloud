@@ -44,7 +44,8 @@ export interface RecentHit {
   action: 'open' | 'download' | 'upload' | 'edit';
 }
 
-export type ActivityAction = 'created' | 'renamed' | 'moved' | 'trashed' | 'restored' | 'version_added';
+export type ActivityAction =
+  'created' | 'renamed' | 'moved' | 'trashed' | 'restored' | 'version_added' | 'edited' | 'version_restored';
 
 export interface ActivityEntry {
   id: string;
@@ -58,6 +59,7 @@ export interface ActivityEntry {
   fromFolder: string | null;
   toFolder: string | null;
   versionNo: number | null;
+  restoredFromVersionNo: number | null;
 }
 
 const SEARCH = '/api/search/v1';
@@ -75,6 +77,22 @@ export const getRecent = () => apiFetch<RecentHit[]>(`${SEARCH}/recent`);
 
 export const getActivity = (itemId: string) =>
   apiFetch<ActivityEntry[]>(`${SEARCH}/items/${itemId}/activity`);
+
+export interface CategoryUsage {
+  category: Category | 'trash';
+  count: number;
+  bytes: number;
+}
+
+/** Dung lượng file của tôi theo loại (version hiện tại) và phần nằm trong thùng rác. */
+export interface UsageSummary {
+  categories: CategoryUsage[];
+  trash: CategoryUsage;
+}
+
+export const getUsage = () => apiFetch<UsageSummary>(`${SEARCH}/usage`);
+
+export const getLargestFiles = (limit = 50) => apiFetch<SearchHit[]>(`${SEARCH}/largest?limit=${limit}`);
 
 /** Item được chia sẻ trực tiếp cho tôi, mới chia sẻ trước. */
 export const getSharedWithMe = () => apiFetch<SharedHit[]>(`${SEARCH}/shared-with-me`);

@@ -100,6 +100,13 @@ public sealed class PublicLinkEndpoints : ICarterModule
             http.HttpContext.Response.Headers.CacheControl = "no-store";
             return (await sender.Send(new CreateDownloadLinkCommand(itemId, null, request?.Inline ?? false, http.GetPublicBaseUrl()), ct)).ToHttpResult();
         }).WithName("GetLinkedDownloadUrl");
+
+        link.MapPost("/thumbnails", async (
+            string token, ThumbnailsRequest request, HttpRequest http, ISender sender, LinkContext context, CancellationToken ct) =>
+        {
+            Use(context, token, http);
+            return await MediaEndpoints.GetThumbnailsAsync(request, http, sender, ct);
+        }).WithName("GetLinkedThumbnails");
     }
 
     private static void Use(LinkContext context, string token, HttpRequest http)

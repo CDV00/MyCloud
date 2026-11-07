@@ -215,10 +215,17 @@ public sealed class ItemProjectionConsumer(SearchDb db) :
                 OwnerId = e.OwnerId,
                 AncestorIds = current?.AncestorIds ?? [],
                 ActorId = e.By,
-                Action = "version_added",
+                // Lịch sử chỉnh sửa: sửa trong trình duyệt / khôi phục phiên bản cũ / tải lên phiên bản mới.
+                Action = e.Source switch
+                {
+                    "edit" => "edited",
+                    "restore" => "version_restored",
+                    _ => "version_added",
+                },
                 Kind = "file",
                 Name = current?.Name ?? string.Empty,
                 VersionNo = e.VersionNo,
+                RestoredFromVersionNo = e.RestoredFromVersionNo,
             });
         }
     }

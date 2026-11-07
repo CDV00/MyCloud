@@ -32,7 +32,7 @@ import { useState, type DragEvent, type KeyboardEvent } from 'react';
 import { Link as RouterLink, useParams } from 'react-router';
 import { canEdit, canManage, type SortField } from '../../api/drive';
 import { toUserMessage } from '../../api/errors';
-import { uploadStore } from '../upload/uploadStore';
+import { fromDataTransfer, uploadPlanner } from '../upload/uploadPlanner';
 import { folderPath } from './download';
 import { BarButton, ItemMenu, SelectionBar, type MenuState } from './ItemMenu';
 import { ItemGrid, ItemTable } from './ItemViews';
@@ -75,9 +75,9 @@ export default function DrivePage() {
   const [desc, setDesc] = useState(false);
   const [view, setView] = useState<ViewMode>(loadView);
   const children = useChildren(folderId, sort, desc);
-  const actions = useItemActions();
 
   const items = children.data?.pages.flatMap((p) => p.items) ?? [];
+  const actions = useItemActions({ items });
   const selection = useSelection(items, folderId);
   const { selectedItems } = selection;
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -91,8 +91,10 @@ export default function DrivePage() {
   function onDrop(event: DragEvent) {
     event.preventDefault();
     setDragging(false);
-    if (folderId && writable && event.dataTransfer.files.length > 0) {
-      uploadStore.add(event.dataTransfer.files, folderId);
+    if (folderId && writable && event.dataTransfer.items.length > 0) {
+      // Thả cả thư mục ⇒ giữ nguyên cấu trúc (Phase 5). Phải đọc DataTransfer ngay trong sự kiện drop.
+      const target = folderId;
+      void fromDataTransfer(event.dataTransfer).then((picked) => uploadPlanner.upload(target, picked));
     }
   }
 
@@ -216,10 +218,13 @@ export default function DrivePage() {
       <SelectionBar
         count={selectedItems.length}
         onClear={selection.clear}
-        hint="Nhấp đúp để mở · nhấp chuột phải để xem thao tác · kéo thả tệp vào đây để tải lên"
+        hint="Nhấp đúp để mở / xem trước · nhấp chuột phải để xem thao tác · kéo thả tệp hoặc thư mục vào đây để tải lên"
       >
-        {single?.kind === 'file' && (
-          <BarButton title="Tải xuống" onClick={() => actions.download(single)}>
+        {selectedItems.length > 0 && (
+          <BarButton
+            title={single?.kind === 'file' ? 'Tải xuống' : 'Tải xuống dạng zip'}
+            onClick={() => actions.downloadMany(selectedItems)}
+          >
             <DownloadIcon fontSize="small" />
           </BarButton>
         )}
@@ -334,7 +339,7 @@ export default function DrivePage() {
           }}
         >
           <Typography variant="h6" color="primary">
-            Thả tệp để tải lên “{title}”
+            Thả tệp hoặc thư mục để tải lên “{title}”
           </Typography>
         </Box>
       )}

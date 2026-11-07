@@ -22,6 +22,7 @@ function file(role: Role): DriveItem {
     ownerId: 'owner',
     modifiedBy: null,
     role,
+    hasThumbnail: false,
   };
 }
 
@@ -43,6 +44,7 @@ function menuLabels(role: Role) {
 describe('ItemMenu theo vai trò', () => {
   it('chủ sở hữu thấy mọi thao tác, kể cả chuyển vào thùng rác', () => {
     expect(menuLabels('owner')).toEqual([
+      'Xem trước',
       'Tải xuống',
       'Chia sẻ',
       'Đổi tên',
@@ -50,7 +52,7 @@ describe('ItemMenu theo vai trò', () => {
       'Di chuyển',
       'Gắn dấu sao',
       'Thông tin chi tiết',
-      'Quản lý phiên bản',
+      'Lịch sử & trao đổi',
       'Tải lên phiên bản mới',
       'Chuyển vào thùng rác',
     ]);
@@ -65,12 +67,13 @@ describe('ItemMenu theo vai trò', () => {
 
   it('người xem chỉ mở, xem quyền chia sẻ, sao chép, gắn sao, xem thông tin', () => {
     expect(menuLabels('viewer')).toEqual([
+      'Xem trước',
       'Tải xuống',
       'Chia sẻ',
       'Tạo bản sao',
       'Gắn dấu sao',
       'Thông tin chi tiết',
-      'Quản lý phiên bản',
+      'Lịch sử & trao đổi',
     ]);
   });
 });

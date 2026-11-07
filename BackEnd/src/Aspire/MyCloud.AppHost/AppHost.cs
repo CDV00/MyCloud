@@ -18,6 +18,17 @@ var notificationDb = postgres.AddDatabase("notificationdb", databaseName: "notif
 // Secret client credentials của Drive (ADR-014): Aspire sinh ngẫu nhiên lần đầu và lưu trong user secrets của AppHost.
 var driveClientSecret = builder.AddParameter(
     "drive-client-secret", new GenerateParameterDefault { MinLength = 40, Special = false }, secret: true, persist: true);
+// Vé vào "phòng" realtime của tệp (lịch sử, trao đổi, ai đang xem — ADR-017): Drive ký, Notification kiểm tra.
+var collaborationSecret = builder.AddParameter(
+    "collaboration-secret", new GenerateParameterDefault { MinLength = 48, Special = false }, secret: true, persist: true);
+// Media Worker đọc blob / ghi thumbnail qua Storage bằng định danh của chính nó (ADR-015).
+var mediaClientSecret = builder.AddParameter(
+    "media-client-secret", new GenerateParameterDefault { MinLength = 40, Special = false }, secret: true, persist: true);
+
+// Quản trị viên (trang quản trị người dùng): danh sách email, cách nhau bằng dấu phẩy. Đặt bằng
+//   dotnet user-secrets set "Parameters:admin-emails" "ban@vidu.com" --project src/Aspire/MyCloud.AppHost
+// Email trong danh sách thành quản trị viên ở lần đăng ký / đăng nhập kế tiếp.
+var adminEmails = builder.AddParameter("admin-emails", builder.Configuration["Parameters:admin-emails"] ?? string.Empty);
 
 var mongo = builder.AddMongoDB("mongo")
     .WithDataVolume()
@@ -54,7 +65,9 @@ var mailpit = builder.AddMailPit("mailpit", httpPort: 8025)
 var identity = builder.AddProject<Projects.Identity_Api>("identity")
     .WithReference(identityDb).WaitFor(identityDb)
     .WithReference(rabbitmq).WaitFor(rabbitmq)
-    .WithEnvironment("ServiceClients__Clients__drive__Secret", driveClientSecret);
+    .WithEnvironment("ServiceClients__Clients__drive__Secret", driveClientSecret)
+    .WithEnvironment("ServiceClients__Clients__media__Secret", mediaClientSecret)
+    .WithEnvironment("Identity__AdminEmails__0", adminEmails);
 
 // Storage: REST (qua Gateway) + gRPC "grpc" (HTTP/2, chỉ Drive gọi) — cả hai khai báo ở Kestrel:Endpoints của project.
 var storage = builder.AddProject<Projects.Storage_Api>("storage")
@@ -76,7 +89,8 @@ var drive = builder.AddProject<Projects.Drive_Api>("drive")
     .WithReference(sharing).WaitFor(sharing)
     .WithReference(identity).WaitFor(identity)
     .WithEnvironment("ServiceIdentity__ClientId", "drive")
-    .WithEnvironment("ServiceIdentity__ClientSecret", driveClientSecret);
+    .WithEnvironment("ServiceIdentity__ClientSecret", driveClientSecret)
+    .WithEnvironment("Collaboration__Secret", collaborationSecret);
 
 var search = builder.AddProject<Projects.Search_Api>("search")
     .WithReference(searchDb).WaitFor(searchDb)
@@ -88,11 +102,16 @@ var notification = builder.AddProject<Projects.Notification_Api>("notification")
     .WithReference(rabbitmq).WaitFor(rabbitmq)
     .WithReference(redis).WaitFor(redis) // SignalR backplane
     .WithReference(mailpit)
-    .WithReference(identity);
+    .WithReference(identity)
+    .WithEnvironment("Collaboration__Secret", collaborationSecret);
 
+// Media Worker: thumbnail (ffmpeg cho video — tuỳ chọn, cấu hình Media__FfmpegPath nếu không có trong PATH).
 builder.AddProject<Projects.Media_Worker>("media")
     .WithReference(rabbitmq).WaitFor(rabbitmq)
-    .WithReference(minio);
+    .WithReference(storage).WaitFor(storage)
+    .WithReference(identity).WaitFor(identity)
+    .WithEnvironment("ServiceIdentity__ClientId", "media")
+    .WithEnvironment("ServiceIdentity__ClientSecret", mediaClientSecret);
 
 var gateway = builder.AddProject<Projects.MyCloud_Gateway>("gateway")
     .WithReference(identity).WaitFor(identity)

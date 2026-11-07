@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Unit test của Media Worker: giải mã / render thumbnail thật (Skia, PDFium), Storage + RabbitMQ giả. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Services\Media\Media.Worker\Media.Worker.csproj" />
+  </ItemGroup>
+</Project>

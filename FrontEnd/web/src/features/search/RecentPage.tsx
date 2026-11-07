@@ -13,9 +13,9 @@ import { hitToItem } from './hits';
 /** "Gần đây": tệp bạn mở, tải xuống hoặc tải lên gần nhất (Search service, cập nhật trễ vài giây). */
 export default function RecentPage() {
   const recent = useRecent();
-  const actions = useItemActions();
   const lastAccess = new Map((recent.data ?? []).map((r) => [r.item.id, r.lastAccessAt]));
   const items = (recent.data ?? []).map((r) => hitToItem(r.item));
+  const actions = useItemActions({ items });
   const selection = useSelection(items);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const accessedColumn = {

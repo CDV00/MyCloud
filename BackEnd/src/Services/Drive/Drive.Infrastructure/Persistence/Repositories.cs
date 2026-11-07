@@ -1,4 +1,5 @@
 using Drive.Domain;
+using Drive.Domain.Comments;
 using Drive.Domain.Items;
 using Drive.Domain.Stars;
 using Drive.Domain.Uploads;
@@ -19,6 +20,14 @@ internal sealed class DriveItemRepository(DriveDbContext db) : IDriveItemReposit
 
     public Task<bool> NameExistsAsync(Guid parentId, string nameKey, Guid? exceptItemId, CancellationToken ct) =>
         db.Items.AnyAsync(x => x.ParentId == parentId && x.NameKey == nameKey && x.Id != exceptItemId && x.TrashedAt == null, ct);
+
+    public async Task<IReadOnlyList<DriveItem>> FindChildrenByNameKeysAsync(
+        Guid parentId, IReadOnlyCollection<string> nameKeys, CancellationToken ct) =>
+        nameKeys.Count == 0
+            ? []
+            : await db.Items.AsNoTracking()
+                .Where(x => x.ParentId == parentId && x.TrashedAt == null && nameKeys.Contains(x.NameKey))
+                .ToListAsync(ct);
 
     public async Task<IReadOnlySet<string>> NameKeysStartingWithAsync(Guid parentId, string keyPrefix, CancellationToken ct) =>
         (await db.Items.Where(x => x.ParentId == parentId && x.TrashedAt == null && x.NameKey.StartsWith(keyPrefix))
@@ -107,6 +116,28 @@ internal sealed class FileVersionRepository(DriveDbContext db) : IFileVersionRep
         await db.FileVersions.Where(v => v.ItemId == itemId).OrderByDescending(v => v.VersionNo).ToListAsync(ct);
 
     public void Remove(FileVersion version) => db.FileVersions.Remove(version);
+}
+
+internal sealed class ItemCommentRepository(DriveDbContext db) : IItemCommentRepository
+{
+    public Task<ItemComment?> FindAsync(Guid commentId, CancellationToken ct) =>
+        db.Comments.SingleOrDefaultAsync(c => c.Id == commentId, ct);
+
+    public async Task<IReadOnlyList<ItemComment>> ListAsync(Guid itemId, int take, CancellationToken ct) =>
+        await db.Comments.AsNoTracking()
+            .Where(c => c.ItemId == itemId)
+            .OrderBy(c => c.CreatedAt).ThenBy(c => c.Id)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Guid>> ThreadParticipantsAsync(Guid rootId, CancellationToken ct) =>
+        await db.Comments.AsNoTracking()
+            .Where(c => (c.Id == rootId || c.ParentId == rootId) && c.DeletedAt == null)
+            .Select(c => c.AuthorId)
+            .Distinct()
+            .ToListAsync(ct);
+
+    public void Add(ItemComment comment) => db.Comments.Add(comment);
 }
 
 internal sealed class StarRepository(DriveDbContext db) : IStarRepository

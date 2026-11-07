@@ -24,7 +24,10 @@ public sealed class NotificationConsumers(
     IConsumer<UserRegistered>,
     IConsumer<UserProfileChanged>,
     IConsumer<ItemShared>,
-    IConsumer<QuotaThresholdReached>
+    IConsumer<QuotaThresholdReached>,
+    IConsumer<ArchiveReady>,
+    IConsumer<ArchiveFailed>,
+    IConsumer<MyCloud.Contracts.Events.Drive.ItemCommentPosted>
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -108,6 +111,63 @@ public sealed class NotificationConsumers(
         UserNotification notification = await AddAsync(e.UserId, "quota", new { e.Percent, e.UsedBytes, e.LimitBytes }, e.OccurredAt, context.CancellationToken);
         await db.SaveChangesAsync(context.CancellationToken);
         await publish.Publish(new PushNotification(e.UserId, notification.Id), context.CancellationToken);
+        await db.SaveChangesAsync(context.CancellationToken);
+    }
+
+    /// <summary>Tệp zip đã sẵn sàng (ADR-015) — chỉ thông báo trong app (realtime), không gửi email.</summary>
+    public Task Consume(ConsumeContext<ArchiveReady> context)
+    {
+        ArchiveReady e = context.Message;
+        return NotifyAsync(e.UserId, "archive_ready", new { e.ArchiveId, e.Name, e.SizeBytes, e.FileCount, e.SkippedCount, e.ExpiresAt }, e.OccurredAt, context);
+    }
+
+    public Task Consume(ConsumeContext<ArchiveFailed> context)
+    {
+        ArchiveFailed e = context.Message;
+        return NotifyAsync(e.UserId, "archive_failed", new { e.ArchiveId, e.Name, e.Reason }, e.OccurredAt, context);
+    }
+
+    /// <summary>
+    /// Tin nhắn mới trong trao đổi về tệp (ADR-017): thông báo trong app cho từng người nhận — "nhắc đến bạn" nếu được
+    /// nhắc tên, "góp ý phiên bản N" nếu gắn với phiên bản, còn lại "trả lời / bình luận".
+    /// </summary>
+    public async Task Consume(ConsumeContext<MyCloud.Contracts.Events.Drive.ItemCommentPosted> context)
+    {
+        var e = context.Message;
+        var mentioned = e.Mentions.ToHashSet();
+        var created = new List<(Guid UserId, Guid NotificationId)>();
+        foreach (Guid recipient in e.Recipients.Distinct().Where(r => r != e.AuthorId).Take(100))
+        {
+            UserNotification notification = await AddAsync(recipient, "comment", new
+            {
+                e.ItemId,
+                e.ItemName,
+                e.CommentId,
+                e.VersionId,
+                e.VersionNo,
+                IsReply = e.ParentId is not null,
+                Mentioned = mentioned.Contains(recipient),
+                e.AuthorId,
+                e.AuthorName,
+                e.Excerpt,
+            }, e.OccurredAt, context.CancellationToken);
+            created.Add((recipient, notification.Id));
+        }
+
+        await db.SaveChangesAsync(context.CancellationToken);
+        foreach ((Guid userId, Guid id) in created)
+        {
+            await publish.Publish(new PushNotification(userId, id), context.CancellationToken);
+        }
+
+        await db.SaveChangesAsync(context.CancellationToken);
+    }
+
+    private async Task NotifyAsync(Guid userId, string type, object payload, DateTimeOffset at, ConsumeContext context)
+    {
+        UserNotification notification = await AddAsync(userId, type, payload, at, context.CancellationToken);
+        await db.SaveChangesAsync(context.CancellationToken);
+        await publish.Publish(new PushNotification(userId, notification.Id), context.CancellationToken);
         await db.SaveChangesAsync(context.CancellationToken);
     }
 

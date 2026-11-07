@@ -14,8 +14,8 @@ import { useItemActions } from './useItemActions';
 /** "Có gắn dấu sao": item còn hoạt động mà người dùng đã gắn sao, gắn gần đây trước. */
 export default function StarredPage() {
   const starred = useStarred();
-  const actions = useItemActions();
   const items = starred.data?.pages.flatMap((p) => p.items) ?? [];
+  const actions = useItemActions({ items });
   const selection = useSelection(items);
   const { selectedItems } = selection;
   const [menu, setMenu] = useState<MenuState | null>(null);

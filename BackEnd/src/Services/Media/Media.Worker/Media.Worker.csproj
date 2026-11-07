@@ -1,10 +1,31 @@
 <Project Sdk="Microsoft.NET.Sdk.Worker">
-  <!-- Phase 0: worker khung. Phase 5: thumbnail/preview từ FileVersionAdded — docs/03 §8. -->
+  <!-- Thumbnail ảnh / trang đầu PDF / khung hình video từ FileVersionAdded — docs/03 §8, ADR-015. -->
   <PropertyGroup>
     <UserSecretsId>mycloud-media-worker</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+    <PackageReference Include="PDFtoImage" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\..\Aspire\MyCloud.ServiceDefaults\MyCloud.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Messaging\MyCloud.BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Grpc\MyCloud.BuildingBlocks.Grpc.csproj" />
+    <ProjectReference Include="..\..\..\Contracts\MyCloud.Contracts.Events\MyCloud.Contracts.Events.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Protobuf Include="..\..\..\Contracts\Protos\mycloud\storage\v1\storage_service.proto"
+              ProtoRoot="..\..\..\Contracts\Protos"
+              GrpcServices="Client"
+              Link="Protos\storage_service.proto" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Media.Worker.Tests" />
   </ItemGroup>
 </Project>

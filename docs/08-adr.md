@@ -213,3 +213,128 @@ Ngoài ra có hai việc mà chính sách "mọi service tự validate JWT của
 token mở đường cho job nền (sao chép thư mục lớn, zip — Phase 5). − Không có mô hình quan hệ khai báo (nhóm, domain,
 "chia sẻ cho cả công ty"): khi cần sẽ đánh giá lại OpenFGA — interface `IItemAuthorizer` / gRPC của Sharing giữ nguyên.
 − Drive được tin tưởng cao (token service vượt kiểm tra chủ sở hữu ở Storage): secret phải được bảo vệ, xoay vòng (Phase 6).
+
+---
+
+<a id="adr-015"></a>
+## ADR-015 — Media Worker đi qua Storage; Storage nén zip từ hàng đợi trong PostgreSQL; nội dung người dùng không bao giờ được hiển thị như HTML
+
+**Trạng thái**: Accepted (Phase 5).
+
+**Bối cảnh**: Phase 5 thêm thumbnail / xem trước, tải nhiều item dạng zip và tải cả thư mục lên. Ba điểm cần quyết:
+1. Media Worker đọc file gốc và ghi thumbnail thế nào: thiết kế ban đầu (docs/03 §8) cho Media đọc / ghi thẳng MinIO với
+   key `thumbnails/{itemId}/{versionId}`. Như vậy Media phải biết cách Storage đặt tên object (`u/{owner}/{blob}`) và
+   giữ khoá truy cập toàn bucket, còn Storage không biết thumbnail tồn tại nên không xoá được khi blob bị xoá.
+2. Ai nén zip: Drive biết cây thư mục và tên, Storage giữ byte. Zip có thể tới vài GB và mất vài phút.
+3. URL xem trực tiếp nằm **cùng origin** với web app (Vite / nginx proxy `/mycloud-blobs/` — ADR-013) và MIME do client
+   khai báo lúc upload ⇒ mở inline một file HTML / SVG là stored XSS trên origin của MyCloud.
+
+**Quyết định**:
+- **Media Worker không có khoá object storage.** Nó dùng định danh service riêng (`media`, client credentials — ADR-014)
+  để gọi Storage: `GetDownloadUrl(internal=true)` lấy presigned URL nội bộ để đọc (ffmpeg đọc thẳng URL bằng HTTP range,
+  không tải cả video), `PutThumbnail` để ghi WebP 256 / 1024 px. Thumbnail gắn với **blob** (`t/{blobId}/{size}.webp`):
+  Storage xoá cùng blob, không tính quota, ký URL không cần truy vấn DB. Media publish `ThumbnailGenerated`; Drive đánh
+  dấu `thumbnail_version_id` chỉ khi version đó còn là version hiện tại (không tăng Revision, không phát event).
+  Ảnh: SkiaSharp (giải mã có lấy mẫu, xoay theo EXIF, từ chối ảnh > 120 MP); PDF: PDFium (PDFtoImage); video: ffmpeg
+  nếu có (không có ⇒ bỏ qua video). Nội dung hỏng ⇒ bỏ qua, không retry.
+- **Drive dựng danh sách, Storage nén.** `POST /archives` (Drive) kiểm tra quyền xem, duyệt cây con, dựng đường dẫn trong
+  zip rồi gọi `Storage.CreateArchive`. Storage ghi yêu cầu vào bảng `archives` (hàng đợi): worker nhận bằng UPDATE có
+  điều kiện (Pending → Building, an toàn khi nhiều instance), stream từng object vào `ZipArchive` ghi lên một S3 multipart
+  upload (bộ nhớ ~2 part, không cần đĩa tạm), xong thì publish `ArchiveReady` qua outbox. Tệp zip hết hạn sau 24 h, không
+  tính quota; người dùng xem trạng thái / tải qua REST của Storage. Instance chết giữa chừng ⇒ job dọn dẹp trả yêu cầu về
+  hàng đợi (tối đa 3 lần). Không dùng consumer MassTransit cho việc nén: một job vài phút không nên giữ transaction của
+  inbox / outbox.
+- **Không bao giờ hiển thị nội dung người dùng như trang web**: khi xem inline, Storage chỉ giữ nguyên kiểu với ảnh raster /
+  video / audio / PDF; văn bản (kể cả HTML, JS, SVG, JSON) ép thành `text/plain; charset=utf-8`; kiểu khác chỉ được tải
+  về. Lớp thứ hai: proxy (Vite, nginx) thêm `Content-Security-Policy: sandbox` và `X-Content-Type-Options: nosniff` cho
+  mọi phản hồi của `/mycloud-blobs/`.
+- **Tải cả thư mục lên**: Drive tạo cả cây thư mục trong một transaction (`POST /folders/tree`, gộp hoặc đổi tên khi
+  trùng) trước khi upload file; client hỏi `POST /items/{id}/name-conflicts` một lần cho cả lô để người dùng chọn giữ
+  cả hai / thay thế (file ⇒ phiên bản mới, thư mục ⇒ gộp) / bỏ qua.
+
+**Hệ quả**: + Storage là nơi duy nhất giữ khoá và biết bố cục object; thumbnail và zip có vòng đời rõ ràng. + Zip lớn
+không ảnh hưởng tới request của người dùng. − Media thêm một bước gRPC cho mỗi file (không đáng kể so với giải mã ảnh).
+− Hàng đợi zip trong PostgreSQL chỉ phù hợp lượng yêu cầu vừa phải; nếu cần scale riêng thì tách worker nén thành service
+(Phase 6+). − Entry > 4 GB trong zip (Zip64 trên stream không seek được) chưa được kiểm thử.
+
+---
+
+<a id="adr-016"></a>
+## ADR-016 — Xem / tạo / sửa tài liệu Office ngay trong trình duyệt; quản trị viên bằng claim trong JWT
+
+**Trạng thái**: Accepted (sau Phase 5).
+
+**Bối cảnh**: người dùng cần đọc Word / Excel / văn bản, tạo tệp mới và sửa tệp ngay trong MyCloud, và cần một trang
+quản trị người dùng. Sửa Office đúng nghĩa (giữ nguyên bố cục) cần một bộ soạn thảo Office riêng như OnlyOffice /
+Collabora: container vài GB, license AGPL, giới hạn số người sửa cùng lúc ở bản community, tích hợp callback lưu tệp.
+
+**Quyết định** (đã hỏi chủ dự án — chọn "trình sửa nhẹ"):
+- **Mọi việc đọc / ghi nội dung Office diễn ra trong trình duyệt**, không thêm service: Word xem bằng docx-preview
+  (giữ bố cục trang, bảng, ảnh), Excel / CSV bằng ExcelJS và lưới ô tự viết. Thư viện tải lười (chỉ khi mở). `.doc`,
+  `.ppt(x)`: chỉ tải về.
+- **Định dạng bảng tính nhận theo nội dung, không theo đuôi tệp**: zip ⇒ xlsx (chuẩn hoá trước khi đưa vào ExcelJS:
+  bỏ tiền tố namespace `x:` và điền địa chỉ hàng / ô bị lược — tệp do OpenXML SDK / hệ thống báo cáo xuất ra); còn lại
+  (.xls nhị phân BIFF, HTML, XML 2003) ⇒ SheetJS (Apache-2.0, cài từ CDN chính thức vì bản npm 0.18.5 có lỗi bảo mật đã
+  biết), lưu lại thành .xls và chỉ giữ dữ liệu + công thức.
+- **Sửa = lưu một phiên bản mới** qua luồng upload sẵn có (Drive không đọc byte của tệp — ADR-002): bản trước luôn còn
+  trong lịch sử phiên bản nên mọi mất mát định dạng đều khôi phục được. Lưu kèm `expectedRevision` (revision lúc mở):
+  người khác đã lưu sau đó ⇒ 412 `DRIVE.REVISION_MISMATCH`, trình sửa hỏi "Vẫn lưu" thay vì ghi đè âm thầm.
+  - Văn bản / mã / Markdown / CSV: sửa đầy đủ, giữ BOM, kiểu xuống dòng, dấu phân cách CSV.
+  - Excel: sửa giá trị / công thức ô ngay trên workbook đã nạp ⇒ định dạng, độ rộng cột, ô gộp, trang tính khác được
+    giữ; công thức mới được Excel tính khi mở tệp (`fullCalcOnLoad`). `.xlsm` chỉ xem (ghi lại sẽ mất macro).
+  - Word: mammoth ⇒ HTML có cấu trúc ⇒ TipTap ⇒ docx (tiêu đề, đậm / nghiêng / gạch, danh sách lồng / đánh số, trích
+    dẫn, khối mã, bảng có gộp ô, ảnh PNG / JPEG / GIF / BMP, liên kết). Bố cục trang, đầu / chân trang, font, màu không
+    giữ được — trình sửa ghi rõ điều này.
+- **Tạo tệp mới** (Word, Excel, văn bản, Markdown): trình duyệt sinh nội dung trống rồi upload như tệp thường, sau đó mở
+  trình sửa.
+- **Quản trị viên**: cờ `is_admin` trong Identity ⇒ access token mang claim `role = admin`; mọi service tự kiểm tra bằng
+  policy `admin` (BuildingBlocks) — không gọi Identity. Quản trị viên đầu tiên do cấu hình `Identity:AdminEmails` chỉ
+  định (AppHost: parameter `admin-emails`). Trang quản trị: danh sách / tìm kiếm / lọc, khoá / mở khoá (thu hồi mọi
+  refresh token, chặn đăng nhập — đăng nhập đúng mật khẩu mới thấy `IDENTITY.ACCOUNT_DISABLED`), cấp / thu quyền quản
+  trị (không tự khoá / tự bỏ quyền mình), đổi hạn mức dung lượng (Storage), thống kê. Mọi thay đổi được ghi log Warning.
+
+**Hệ quả**: + Không thêm hạ tầng; tệp Office mở nhanh, không rời trang. + Không bao giờ mất dữ liệu nhờ phiên bản. − Sửa
+Word / Excel phức tạp có thể mất định dạng (đã cảnh báo, khôi phục được); nếu cần độ trung thực cao ⇒ tích hợp OnlyOffice /
+Collabora sau (WOPI), giữ nguyên mô hình "lưu = phiên bản mới". − Thu quyền quản trị / khoá tài khoản có hiệu lực với
+access token đang dùng khi token hết hạn (≤ 15 phút). − Chưa có nhật ký kiểm toán (audit log) lưu trong DB — Phase 6.
+
+## ADR-017 — Lịch sử & trao đổi của tệp: ghi chú phiên bản, tin nhắn gắn phiên bản, phòng realtime qua SignalR
+
+**Trạng thái**: Accepted (sau Phase 5).
+
+**Bối cảnh**: nhiều người cùng làm trên một tệp cần biết lần trước ai đổi gì và vì sao, khôi phục bản cũ kèm lý do, và
+trao đổi (kiểu chat) ngay cạnh tệp — góp ý một phiên bản cụ thể, nhắc tên người khác, thấy ngay khi người kia trả lời
+hoặc vừa lưu bản mới. Chưa cần (và chưa đủ hạ tầng cho) cùng sửa đồng thời từng ký tự (CRDT / OT).
+
+**Quyết định**:
+- **Ghi chú phiên bản**: `file_versions.note` (≤ 1000 ký tự) nhập lúc lưu (`POST /uploads` `{note}`) hoặc lúc khôi phục
+  (`POST /items/{id}/versions/{vid}/restore` `{note}`); sửa sau bằng `PATCH /items/{id}/versions/{vid}` — chỉ người tạo
+  phiên bản hoặc chủ tệp.
+- **Trao đổi** lưu ở Drive (cùng giao dịch với kiểm tra quyền, xoá vĩnh viễn tệp ⇒ xoá theo): bảng `item_comments(id,
+  item_id, version_id?, parent_id?, author_id, body ≤ 4000, mentions uuid[], created_at, edited_at, deleted_at,
+  resolved_at, resolved_by)`. Một cấp trả lời (trả lời của trả lời gắn vào luồng gốc, kế thừa phiên bản). Xoá mềm (giữ
+  chỗ trong luồng). Luồng gốc có thể "đã xử lý". Phiên bản bị xoá ⇒ tin nhắn vẫn còn.
+- **Quyền**: đọc = Viewer; viết = **Commenter** trở lên (vai trò "người nhận xét" từ Phase 4 nay có ý nghĩa); sửa tin =
+  người viết; xoá = người viết hoặc chủ tệp; ghi chú phiên bản = người tạo phiên bản hoặc chủ tệp. `@nhắc tên` chỉ giữ
+  người thực sự xem được tệp (chủ + người được chia sẻ trực tiếp hoặc kế thừa), người khác bị bỏ qua.
+- **Người nhận thông báo** (event `ItemCommentPosted.Recipients`, Notification tạo thông báo loại `comment` + đẩy
+  realtime): luồng mới ⇒ chủ tệp, người tạo phiên bản được góp ý, người được nhắc; trả lời ⇒ những người đã tham gia
+  luồng + người được nhắc. Không bao giờ gửi cho chính người viết.
+- **Phòng realtime theo tệp** trên hub `/hubs/notifications` sẵn có (một kết nối SignalR cho cả trang): Drive cấp vé
+  `POST /items/{id}/live` = `LiveRoomToken` (HMAC-SHA256 của itemId + userId + hạn, khoá `Collaboration:Secret` dùng
+  chung Drive ↔ Notification, hạn 12 giờ). Hub `Watch(ticket)` kiểm vé ⇒ vào nhóm `item:{id}`; Notification **không cần
+  biết quyền** — Drive đã kiểm lúc cấp vé. Thu hồi chia sẻ có hiệu lực với phòng khi vé hết hạn hoặc khi tải lại trang.
+  - Nội dung đẩy vào phòng chỉ là **tín hiệu** `item-activity {kind: comment | version | version_note, ...}` — client gọi
+    lại REST (đã kiểm quyền) để lấy dữ liệu; không phát nội dung tin nhắn qua nhóm. Nguồn: `ItemCommentPosted`,
+    `ItemHistoryChanged` (sửa / xoá / xử lý tin, sửa ghi chú), `FileVersionAdded`.
+  - **Hiện diện**: client gọi `Presence(itemId, viewing | editing)` mỗi 20 giây; hub phát cho cả nhóm; không nhận tín hiệu
+    sau 60 giây ⇒ coi như đã rời (không lưu trạng thái ở server ⇒ chạy được nhiều instance với Redis backplane). Trình sửa
+    hiện cảnh báo "X cũng đang sửa tệp này" — kết hợp kiểm tra `expectedRevision` (412) của ADR-016 thay cho khoá tệp.
+- **So sánh phiên bản ngay trong trình duyệt** (Drive vẫn không đọc nội dung tệp): văn bản / mã / CSV theo dòng (jsdiff);
+  Word theo đoạn (mammoth → văn bản thuần); Excel theo từng ô (giá trị hoặc công thức) và trang tính thêm / bớt.
+- **Liên kết trực tiếp** `/files/{id}?panel=history` (từ thông báo) mở xem trước kèm bảng "Lịch sử & trao đổi".
+
+**Hệ quả**: + Không thêm service / hạ tầng; Notification vẫn không phụ thuộc Drive lúc chạy. + Mỗi thay đổi có người,
+thời điểm, cách tạo, lý do; khôi phục không làm mất gì. − Chưa cùng sửa theo thời gian thực từng ký tự; hai người sửa cùng
+lúc vẫn phải xử lý xung đột 412 (đã cảnh báo trước nhờ hiện diện). − So sánh Word bỏ qua định dạng; PDF / ảnh không so
+sánh được. − Vé phòng không bị thu hồi tức thì khi bỏ chia sẻ (≤ 12 giờ, chỉ nhận tín hiệu, không nhận nội dung).

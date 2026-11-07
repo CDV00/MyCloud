@@ -13,7 +13,7 @@ using ValidationResult = MyCloud.BuildingBlocks.Domain.Results.ValidationResult;
 
 namespace Identity.Api.Users;
 
-public sealed record UserProfileResponse(Guid Id, string Email, string DisplayName, string? AvatarUrl, DateTimeOffset CreatedAt);
+public sealed record UserProfileResponse(Guid Id, string Email, string DisplayName, string? AvatarUrl, DateTimeOffset CreatedAt, bool IsAdmin);
 
 public sealed record UpdateProfileRequest(string DisplayName);
 
@@ -103,7 +103,7 @@ public sealed class UserEndpoints : ICarterModule
     }
 
     private static UserProfileResponse ToResponse(AppUser user) =>
-        new(user.Id, user.Email ?? string.Empty, user.DisplayName, user.AvatarUrl, user.CreatedAt);
+        new(user.Id, user.Email ?? string.Empty, user.DisplayName, user.AvatarUrl, user.CreatedAt, user.IsAdmin);
 }
 
 internal sealed class UpdateProfileRequestValidator : AbstractValidator<UpdateProfileRequest>

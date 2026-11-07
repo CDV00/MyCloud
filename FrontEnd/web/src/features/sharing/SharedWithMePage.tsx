@@ -28,9 +28,9 @@ import { roleLabels } from './roles';
 export default function SharedWithMePage() {
   const shared = useQuery({ queryKey: [...searchKeys.all, 'shared-with-me'], queryFn: getSharedWithMe });
   const users = useUsers((shared.data ?? []).map((s) => s.sharedBy));
-  const actions = useItemActions();
-  const [menu, setMenu] = useState<MenuState | null>(null);
   const toItem = (s: SharedHit) => hitToItem(s.item, s.role);
+  const actions = useItemActions({ items: (shared.data ?? []).map(toItem) });
+  const [menu, setMenu] = useState<MenuState | null>(null);
 
   return (
     <Box>

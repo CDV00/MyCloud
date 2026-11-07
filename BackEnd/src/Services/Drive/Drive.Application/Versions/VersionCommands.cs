@@ -14,7 +14,10 @@ public sealed record VersionDto(
     string MimeType,
     DateTimeOffset CreatedAt,
     Guid CreatedBy,
-    bool IsCurrent);
+    bool IsCurrent,
+    string Source,
+    int? RestoredFromVersionNo,
+    string? Note);
 
 /// <summary>Lịch sử version của file, mới nhất trước. Xem được cả khi file đang ở thùng rác.</summary>
 public sealed record ListVersionsQuery(Guid ItemId) : IQuery<IReadOnlyList<VersionDto>>;
@@ -32,7 +35,9 @@ internal sealed class ListVersionsQueryHandler(ItemAccess access, IFileVersionRe
 
         IReadOnlyList<FileVersion> history = await versions.ListAsync(item.Id, cancellationToken);
         return history
-            .Select(v => new VersionDto(v.Id, v.VersionNo, v.SizeBytes, v.MimeType, v.CreatedOnUtc, v.CreatedBy, v.Id == item.CurrentVersionId))
+            .Select(v => new VersionDto(
+                v.Id, v.VersionNo, v.SizeBytes, v.MimeType, v.CreatedOnUtc, v.CreatedBy, v.Id == item.CurrentVersionId,
+                v.Source.ToString().ToLowerInvariant(), v.RestoredFromVersionNo, v.Note))
             .ToArray();
     }
 }
@@ -41,7 +46,8 @@ internal sealed class ListVersionsQueryHandler(ItemAccess access, IFileVersionRe
 /// Khôi phục version cũ = tạo version MỚI có nội dung của nó (Storage sao chép blob phía server). Lịch sử luôn tiến về
 /// phía trước, không version nào bị sửa, và quy trình claim/GC blob giữ nguyên như upload (ADR-006).
 /// </summary>
-public sealed record RestoreVersionCommand(Guid ItemId, Guid VersionId) : ICommand<ItemDto>;
+/// <param name="Note">Lý do khôi phục (ghi vào phiên bản mới).</param>
+public sealed record RestoreVersionCommand(Guid ItemId, Guid VersionId, string? Note = null) : ICommand<ItemDto>;
 
 internal sealed class RestoreVersionCommandHandler(
     ItemAccess access,
@@ -60,7 +66,8 @@ internal sealed class RestoreVersionCommandHandler(
         if (version.Id != item.CurrentVersionId)
         {
             CompletedBlob copy = await storage.CopyBlobAsync(item.OwnerId, item.OwnerId, version.BlobId, cancellationToken);
-            item.AddVersion(Guid.CreateVersion7(), copy.BlobId, copy.SizeBytes, version.MimeType);
+            item.AddVersion(
+                Guid.CreateVersion7(), copy.BlobId, copy.SizeBytes, version.MimeType, VersionSource.Restore, version.VersionNo, request.Note);
             await retention.ApplyAsync(item, cancellationToken);
         }
 

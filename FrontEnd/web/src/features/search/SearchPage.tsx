@@ -33,8 +33,8 @@ export default function SearchPage() {
   const filters = useMemo(() => ({ q, type, modifiedAfter: modifiedAfter(range) }), [q, type, range]);
   const enabled = q.trim().length > 0 || type !== null || range !== 'any';
   const results = useSearch(filters, enabled);
-  const actions = useItemActions();
   const items = (results.data?.pages.flatMap((p) => p.items) ?? []).map((hit) => hitToItem(hit));
+  const actions = useItemActions({ items });
   const selection = useSelection(items, JSON.stringify(filters));
   const [menu, setMenu] = useState<MenuState | null>(null);
 

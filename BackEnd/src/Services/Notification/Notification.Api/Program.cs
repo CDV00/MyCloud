@@ -20,10 +20,12 @@ builder.AddMessaging(x =>
     x.AddConsumer<NotificationConsumers>();
     x.AddConsumer<PushNotificationConsumer>();
     x.AddConsumer<SendEmailConsumer>();
+    x.AddConsumer<ItemRoomBroadcaster>();
 });
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<NotificationQueries>();
+builder.Services.AddOptions<CollaborationOptions>().Bind(builder.Configuration.GetSection(CollaborationOptions.SectionName));
 builder.Services.AddOptions<SmtpOptions>()
     .Bind(builder.Configuration.GetSection(SmtpOptions.SectionName))
     .PostConfigure(o => o.UseConnectionString(builder.Configuration.GetConnectionString("mailpit")));

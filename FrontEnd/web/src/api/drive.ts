@@ -24,6 +24,8 @@ export interface DriveItem {
   modifiedBy: string | null;
   /** Vai trò của người đang xem: quyết định thao tác nào được hiện. */
   role: Role;
+  /** Media Worker đã tạo thumbnail cho version hiện tại. */
+  hasThumbnail: boolean;
 }
 
 export type Role = 'owner' | 'editor' | 'commenter' | 'viewer' | 'none';
@@ -42,7 +44,15 @@ export interface FileVersion {
   createdAt: string;
   createdBy: string;
   isCurrent: boolean;
+  /** Cách tạo phiên bản: tải lên, sửa trong trình duyệt, khôi phục bản cũ, sao chép. */
+  source: VersionSource;
+  /** Số phiên bản đã được khôi phục (source = restore). */
+  restoredFromVersionNo: number | null;
+  /** Ghi chú thay đổi (lý do sửa / khôi phục). */
+  note: string | null;
 }
+
+export type VersionSource = 'upload' | 'edit' | 'restore' | 'copy';
 
 export interface ItemPage {
   items: DriveItem[];
@@ -109,7 +119,10 @@ export const getDownloadUrl = (id: string, options: { inline?: boolean; versionI
   });
 
 /** Nơi file tải lên sẽ vào: thư mục (file mới) hoặc file có sẵn (phiên bản mới). */
-export type UploadTarget = { parentId: string } | { targetItemId: string };
+export type UploadTarget =
+  | { parentId: string }
+  /** `expectedRevision`: revision lúc mở trình sửa — đã có người lưu sau đó ⇒ 412 (không ghi đè âm thầm). */
+  | { targetItemId: string; expectedRevision?: number; source?: 'edit'; note?: string };
 
 export const startUpload = (target: UploadTarget, file: File, signal?: AbortSignal) =>
   apiFetch<UploadSession>(`${DRIVE}/uploads`, {
@@ -123,6 +136,51 @@ export const completeUpload = (uploadId: string, parts: { partNumber: number; eT
 
 export const abortUpload = (uploadId: string) =>
   apiFetch(`${DRIVE}/uploads/${uploadId}`, { method: 'DELETE' });
+
+// --- Thumbnail, tải dạng zip, tải cả thư mục lên (Phase 5 — ADR-015) ---
+
+export interface ThumbnailBatch {
+  items: { itemId: string; url: string }[];
+  expiresAt: string | null;
+}
+
+/** URL thumbnail cho một lô item (tối đa 200); item không có thumbnail / không xem được bị bỏ qua. */
+export const getThumbnails = (itemIds: string[], size = 256) =>
+  apiFetch<ThumbnailBatch>(`${DRIVE}/thumbnails`, { method: 'POST', json: { itemIds, size } });
+
+export interface ArchiveRequest {
+  archiveId: string;
+  name: string;
+  fileCount: number;
+  totalBytes: number;
+}
+
+/** Nén nhiều item / cả thư mục: Storage làm trong nền, xong thì có thông báo (và tải về qua Storage). */
+export const createArchive = (itemIds: string[]) =>
+  apiFetch<ArchiveRequest>(`${DRIVE}/archives`, { method: 'POST', json: { itemIds } });
+
+export type FolderConflictMode = 'rename' | 'merge';
+
+export interface FolderTree {
+  /** Đường dẫn tương đối đã gửi → id thư mục. */
+  folders: Record<string, string>;
+  /** Đường dẫn trỏ tới thư mục đã có từ trước (gộp). */
+  merged: string[];
+}
+
+export const createFolderTree = (parentId: string, paths: string[], conflict: FolderConflictMode) =>
+  apiFetch<FolderTree>(`${DRIVE}/folders/tree`, { method: 'POST', json: { parentId, paths, conflict } });
+
+export interface NameConflict {
+  name: string;
+  itemId: string;
+  kind: ItemKind;
+  role: Role;
+}
+
+/** Tên nào đã có trong thư mục (không phân biệt hoa thường). */
+export const findNameConflicts = (folderId: string, names: string[]) =>
+  apiFetch<NameConflict[]>(`${DRIVE}/items/${folderId}/name-conflicts`, { method: 'POST', json: { names } });
 
 // --- Thùng rác (docs/05 §6) ---
 
@@ -155,8 +213,11 @@ export const copyItem = (id: string, options: { targetParentId?: string; name?: 
 
 export const listVersions = (id: string) => apiFetch<FileVersion[]>(`${DRIVE}/items/${id}/versions`);
 
-export const restoreVersion = (id: string, versionId: string) =>
-  apiFetch<DriveItem>(`${DRIVE}/items/${id}/versions/${versionId}/restore`, { method: 'POST' });
+export const restoreVersion = (id: string, versionId: string, note?: string) =>
+  apiFetch<DriveItem>(`${DRIVE}/items/${id}/versions/${versionId}/restore`, {
+    method: 'POST',
+    json: { note: note?.trim() || null },
+  });
 
 export const deleteVersion = (id: string, versionId: string) =>
   apiFetch(`${DRIVE}/items/${id}/versions/${versionId}`, { method: 'DELETE' });
@@ -247,9 +308,16 @@ export const listLinkedChildren = (
 export const getLinkedAncestors = (token: string, id: string, password?: string | null) =>
   apiFetch<DriveItem[]>(`${publicLink(token)}/items/${id}/ancestors`, { headers: linkHeaders(password) });
 
-export const getLinkedDownloadUrl = (token: string, id: string, password?: string | null) =>
+export const getLinkedDownloadUrl = (token: string, id: string, password?: string | null, inline = false) =>
   apiFetch<{ url: string; expiresAt: string }>(`${publicLink(token)}/items/${id}/download-url`, {
     method: 'POST',
-    json: { inline: false },
+    json: { inline },
+    headers: linkHeaders(password),
+  });
+
+export const getLinkedThumbnails = (token: string, itemIds: string[], password?: string | null, size = 256) =>
+  apiFetch<ThumbnailBatch>(`${publicLink(token)}/thumbnails`, {
+    method: 'POST',
+    json: { itemIds, size },
     headers: linkHeaders(password),
   });

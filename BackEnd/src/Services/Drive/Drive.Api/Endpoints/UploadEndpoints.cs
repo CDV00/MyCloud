@@ -9,7 +9,15 @@ using MyCloud.BuildingBlocks.Web;
 namespace Drive.Api.Endpoints;
 
 /// <param name="TargetItemId">Có giá trị ⇒ upload phiên bản mới cho file này (bỏ qua ParentId/Name).</param>
-public sealed record StartUploadRequest(Guid? ParentId, string? Name, long SizeBytes, string? MimeType, Guid? TargetItemId = null);
+/// <param name="ExpectedRevision">
+/// Với phiên bản mới: revision của file lúc người dùng mở trình sửa — đã có người lưu sau đó ⇒ 412, không ghi đè âm thầm.
+/// </param>
+/// <param name="Source">"edit" = lưu từ trình sửa trong trình duyệt (lịch sử chỉnh sửa); mặc định là tải lên.</param>
+/// <param name="Note">Ghi chú thay đổi của phiên bản mới (lý do sửa).</param>
+public sealed record StartUploadRequest(
+    Guid? ParentId, string? Name, long SizeBytes, string? MimeType, Guid? TargetItemId = null, long? ExpectedRevision = null,
+    string? Source = null,
+    string? Note = null);
 
 public sealed record CompleteUploadRequest(CompletedPart[] Parts);
 
@@ -32,7 +40,10 @@ public sealed class UploadEndpoints : ICarterModule
     {
         Result<UploadDto> result = await sender.Send(
             new StartUploadCommand(
-                request.ParentId, request.Name, request.SizeBytes, request.MimeType, http.GetPublicBaseUrl(), request.TargetItemId), ct);
+                request.ParentId, request.Name, request.SizeBytes, request.MimeType, http.GetPublicBaseUrl(), request.TargetItemId,
+                request.ExpectedRevision,
+                string.Equals(request.Source, "edit", StringComparison.OrdinalIgnoreCase),
+                request.Note), ct);
         return result.IsSuccess
             ? Results.Created($"/api/v1/uploads/{result.Value.UploadId}", result.Value)
             : result.ToProblem();

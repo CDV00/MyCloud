@@ -18,9 +18,12 @@ public sealed record PushNotification(Guid UserId, Guid NotificationId);
 
 public sealed record SendEmail(string To, string Subject, string HtmlBody, string TextBody);
 
-/// <summary>Hub <c>/api/hubs/notifications</c> (qua Gateway: <c>/api/notification/hubs/notifications</c>). Chỉ đẩy xuống.</summary>
+/// <summary>
+/// Hub <c>/api/hubs/notifications</c> (qua Gateway: <c>/api/notification/hubs/notifications</c>): đẩy thông báo xuống, và
+/// "phòng" realtime của từng tệp — xem <c>ItemRooms.cs</c>.
+/// </summary>
 [Authorize]
-public sealed class NotificationHub : Hub
+public sealed partial class NotificationHub : Hub
 {
     public const string Path = "/api/hubs/notifications";
     public const string NotificationMethod = "notification";

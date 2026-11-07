@@ -14,6 +14,9 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncL
 
     public const string ServiceClientSecret = "test-drive-client-secret";
 
+    /// <summary>Email được cấu hình là quản trị viên (Identity:AdminEmails).</summary>
+    public const string AdminEmail = "root-admin@example.com";
+
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
 
     public async Task InitializeAsync() => await _postgres.StartAsync();
@@ -32,6 +35,7 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncL
         builder.UseSetting("Tokens:CookiePath", AuthPath);
         builder.UseSetting("Tokens:RefreshReuseLeeway", "00:00:00"); // test phát hiện dùng lại token ngay lập tức
         builder.UseSetting("ServiceClients:Clients:drive:Secret", ServiceClientSecret);
+        builder.UseSetting("Identity:AdminEmails:0", AdminEmail);
 
         builder.ConfigureTestServices(services => services.AddMassTransitTestHarness());
     }

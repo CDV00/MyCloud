@@ -184,7 +184,8 @@ public sealed partial class UploadService(
     }
 
     public async Task<DownloadUrl> GetDownloadUrlAsync(
-        Guid userId, Guid blobId, string fileName, string? mimeType, bool inline, string? publicBaseUrl, CancellationToken ct)
+        Guid userId, Guid blobId, string fileName, string? mimeType, bool inline, string? publicBaseUrl, CancellationToken ct,
+        bool internalEndpoint = false)
     {
         // Chủ sở hữu blob = chủ sở hữu file. Phase 4 (chia sẻ): Drive kiểm tra quyền rồi gọi bằng định danh của service.
         Blob blob = await FindOwnedAsync(userId, blobId, ct) ?? throw new BlobNotFoundException(blobId);
@@ -195,7 +196,8 @@ public sealed partial class UploadService(
 
         DateTimeOffset expiresAt = timeProvider.GetUtcNow() + _options.DownloadUrlTtl;
         string name = string.IsNullOrWhiteSpace(fileName) ? "download" : fileName;
-        string url = s3.PresignDownload(publicBaseUrl, blob.ObjectKey, name, mimeType ?? blob.MimeType, inline, expiresAt);
+        (string contentType, bool asInline) = InlineContent.Resolve(mimeType ?? blob.MimeType, inline);
+        string url = s3.PresignDownload(publicBaseUrl, blob.ObjectKey, name, contentType, asInline, expiresAt, internalEndpoint);
         return new DownloadUrl(url, expiresAt);
     }
 

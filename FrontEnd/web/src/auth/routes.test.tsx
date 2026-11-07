@@ -9,7 +9,7 @@ function renderAt(path: string, status: AuthStatus) {
     status,
     user:
       status === 'authenticated'
-        ? { id: '1', email: 'a@b.c', displayName: 'A', avatarUrl: null, createdAt: '' }
+        ? { id: '1', email: 'a@b.c', displayName: 'A', avatarUrl: null, createdAt: '', isAdmin: false }
         : null,
     login: vi.fn(),
     register: vi.fn(),

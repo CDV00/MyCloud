@@ -14,6 +14,8 @@ import RegisterPage from '../pages/auth/RegisterPage';
 import ErrorPage from '../pages/ErrorPage';
 import HomePage from '../pages/HomePage';
 import StoragePage from '../pages/StoragePage';
+import AdminPage from '../pages/AdminPage';
+import FilePage from '../pages/FilePage';
 
 export const routes: RouteObject[] = [
   {
@@ -44,6 +46,8 @@ export const routes: RouteObject[] = [
               { path: '/search', element: <SearchPage /> },
               { path: '/storage', element: <StoragePage /> },
               { path: '/account', element: <AccountPage /> },
+              { path: '/admin', element: <AdminPage /> },
+              { path: '/files/:id', element: <FilePage /> },
               { path: '*', element: <ErrorPage /> },
             ],
           },

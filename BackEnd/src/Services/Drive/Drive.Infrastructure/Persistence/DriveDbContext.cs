@@ -1,3 +1,4 @@
+using Drive.Domain.Comments;
 using Drive.Domain.Items;
 using Drive.Domain.Stars;
 using Drive.Domain.Uploads;
@@ -17,6 +18,8 @@ public sealed class DriveDbContext(DbContextOptions<DriveDbContext> options) : D
     public DbSet<PendingUpload> PendingUploads => Set<PendingUpload>();
 
     public DbSet<Star> Stars => Set<Star>();
+
+    public DbSet<ItemComment> Comments => Set<ItemComment>();
 
     internal DbSet<ItemAccessRecord> AccessLog => Set<ItemAccessRecord>();
 

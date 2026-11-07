@@ -19,6 +19,8 @@ namespace Notification.IntegrationTests;
 /// <summary>Notification.Api thật + PostgreSQL thật; RabbitMQ thay bằng test harness (outbox vẫn chạy thật).</summary>
 public sealed class NotificationApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    public const string CollaborationSecret = "test-collaboration-secret";
+
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
 
     public async Task InitializeAsync() => await _postgres.StartAsync();
@@ -35,6 +37,7 @@ public sealed class NotificationApiFactory : WebApplicationFactory<Program>, IAs
         builder.UseSetting("ConnectionStrings:notificationdb", _postgres.GetConnectionString());
         builder.UseSetting("ConnectionStrings:rabbitmq", "amqp://guest:guest@localhost:5672");
         builder.UseSetting("Email:WebBaseUrl", "http://mycloud.test");
+        builder.UseSetting("Collaboration:Secret", CollaborationSecret);
         builder.ConfigureTestServices(services =>
         {
             services.AddMassTransitTestHarness();
@@ -121,6 +124,23 @@ public sealed class NotificationTests(NotificationApiFactory factory) : IClassFi
         (await ListAsync(user)).UnreadCount.ShouldBe(1);
         (await client.PostAsync("/api/v1/notifications/read-all", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await ListAsync(user)).UnreadCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ArchiveReadyAndFailed_BecomeInAppNotifications_PushedRealtime_WithoutEmail()
+    {
+        Guid user = Guid.NewGuid(), archive = Guid.NewGuid();
+        await PublishAndWaitAsync(new ArchiveReady(archive, user, "Dự án.zip", 1234, 3, 1, DateTimeOffset.UtcNow.AddDays(1)));
+        await PublishAndWaitAsync(new ArchiveFailed(Guid.NewGuid(), user, "Ảnh.zip", "Không tạo được tệp zip."));
+
+        Item[] items = (await ListAsync(user)).Items;
+        items.Select(i => i.Type).ShouldBe(["archive_failed", "archive_ready"]);
+        Item ready = items[1];
+        ready.Payload.GetProperty("archiveId").GetGuid().ShouldBe(archive);
+        ready.Payload.GetProperty("name").GetString().ShouldBe("Dự án.zip");
+        ready.Payload.GetProperty("skippedCount").GetInt32().ShouldBe(1);
+        (await DeliveredAsync<PushNotification>(x => x.Context.Message.UserId == user)).ShouldBeTrue();
+        (await Harness.Published.Any<SendEmail>(x => x.Context.Message.Subject.Contains("Dự án.zip"))).ShouldBeFalse();
     }
 
     [Fact]

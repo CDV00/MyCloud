@@ -23,6 +23,9 @@ public static class IdentityErrors
     public static readonly Error PasswordMismatch = new("IDENTITY.PASSWORD_MISMATCH", "The current password is incorrect.");
 
     public static readonly Error UserNotFound = new("IDENTITY.USER_NOT_FOUND", "The user does not exist.");
+
+    // Chỉ trả sau khi mật khẩu đúng ⇒ không giúp dò email.
+    public static readonly Error AccountDisabled = new("IDENTITY.ACCOUNT_DISABLED", "This account has been disabled by an administrator.");
 }
 
 /// <summary>Đăng ký, đăng nhập, refresh, đăng xuất, đổi mật khẩu.</summary>
@@ -32,6 +35,7 @@ public sealed class AccountService(
     AccessTokenService accessTokens,
     RefreshTokenService refreshTokens,
     IPublishEndpoint publishEndpoint,
+    AdminBootstrap adminBootstrap,
     TimeProvider timeProvider)
 {
     public async Task<Result<Guid>> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken)
@@ -48,6 +52,7 @@ public sealed class AccountService(
             UserName = request.Email.Trim(),
             DisplayName = request.DisplayName.Trim(),
             CreatedAt = timeProvider.GetUtcNow(),
+            IsAdmin = adminBootstrap.IsConfiguredAdmin(request.Email),
         };
 
         // Bus outbox: event được thêm vào DbContext và lưu CÙNG transaction với user trong CreateAsync.
@@ -72,6 +77,19 @@ public sealed class AccountService(
         }
 
         await userManager.ResetAccessFailedCountAsync(user);
+        if (user.DisabledAt is not null)
+        {
+            return Result.Failure<TokenPair>(IdentityErrors.AccountDisabled);
+        }
+
+        // Email nằm trong Identity:AdminEmails ⇒ quản trị viên (tạo quản trị viên đầu tiên không cần sửa DB).
+        if (!user.IsAdmin && adminBootstrap.IsConfiguredAdmin(user.Email))
+        {
+            user.IsAdmin = true;
+        }
+
+        user.LastLoginAt = timeProvider.GetUtcNow();
+        await userManager.UpdateAsync(user);
 
         IssuedRefreshToken refresh = refreshTokens.Issue(user.Id, familyId: null, client);
         await db.SaveChangesAsync(cancellationToken);
@@ -88,7 +106,7 @@ public sealed class AccountService(
         }
 
         AppUser? user = await userManager.FindByIdAsync(current.UserId.ToString());
-        if (user is null || await userManager.IsLockedOutAsync(user))
+        if (user is null || user.DisabledAt is not null || await userManager.IsLockedOutAsync(user))
         {
             await refreshTokens.RevokeFamilyAsync(current.FamilyId, RevocationReasons.UserUnavailable, cancellationToken);
             return Result.Failure<TokenPair>(IdentityErrors.InvalidRefreshToken);
