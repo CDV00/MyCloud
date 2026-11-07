@@ -17,7 +17,8 @@ export default defineConfig({
     port: Number(process.env.PORT ?? 5173),
     strictPort: true,
     proxy: {
-      '/api': { target: gatewayUrl, xfwd: true },
+      // ws: SignalR (thông báo realtime) đi qua cùng proxy.
+      '/api': { target: gatewayUrl, xfwd: true, ws: true },
       '/mycloud-blobs': { target: objectStorageUrl, changeOrigin: false },
     },
   },

@@ -22,5 +22,20 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Web\MyCloud.BuildingBlocks.Web.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Messaging\MyCloud.BuildingBlocks.Messaging.csproj" />
     <ProjectReference Include="..\..\..\Contracts\MyCloud.Contracts.Events\MyCloud.Contracts.Events.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Grpc\MyCloud.BuildingBlocks.Grpc.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Server của identity.v1.UserService (docs/04 §2.1: mỗi bên tự sinh code từ file proto chung). -->
+    <Protobuf Include="..\..\..\Contracts\Protos\mycloud\identity\v1\user_service.proto"
+              ProtoRoot="..\..\..\Contracts\Protos"
+              GrpcServices="Both"
+              Link="Protos\user_service.proto" />
   </ItemGroup>
 </Project>

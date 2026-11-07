@@ -1,5 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-  <!-- Phase 0: service khung, đã nhận UserRegistered để kiểm chứng luồng event. Phase 4: email + SignalR — docs/03 §7. -->
+  <!--
+    Thông báo (docs/03 §7): lưu liên hệ, thông báo trong app (REST + SignalR, Redis backplane), email qua SMTP
+    (Mailpit ở dev). Một project chia theo tính năng như Storage.
+  -->
+  <PropertyGroup>
+    <UserSecretsId>mycloud-notification-api</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="EFCore.NamingConventions" />
+    <PackageReference Include="MailKit" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Aspire\MyCloud.ServiceDefaults\MyCloud.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Web\MyCloud.BuildingBlocks.Web.csproj" />

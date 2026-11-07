@@ -26,7 +26,11 @@ public sealed class Blob
 {
     public Guid Id { get; set; }
 
+    /// <summary>Người trả dung lượng (chủ sở hữu file).</summary>
     public Guid OwnerId { get; set; }
+
+    /// <summary>Người đang upload — khác <see cref="OwnerId"/> khi upload vào thư mục được chia sẻ; chỉ người này ký thêm part.</summary>
+    public Guid UploaderId { get; set; }
 
     public string Bucket { get; set; } = string.Empty;
 

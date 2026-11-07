@@ -309,6 +309,10 @@ namespace Storage.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("uploaded_at");
 
+                    b.Property<Guid>("UploaderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("uploader_id");
+
                     b.HasKey("Id")
                         .HasName("pk_blobs");
 

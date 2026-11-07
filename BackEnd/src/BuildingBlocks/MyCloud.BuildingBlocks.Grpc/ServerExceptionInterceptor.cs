@@ -50,6 +50,7 @@ public sealed class ServerExceptionInterceptor(ILogger<ServerExceptionIntercepto
         NotFoundException => StatusCode.NotFound,
         BadRequestException => StatusCode.InvalidArgument,
         ConflictException => StatusCode.FailedPrecondition,
+        ForbiddenException => StatusCode.PermissionDenied,
         PreconditionFailedException => StatusCode.Aborted,
         LimitExceededException => StatusCode.ResourceExhausted,
         UnauthorizedAccessException => StatusCode.PermissionDenied,

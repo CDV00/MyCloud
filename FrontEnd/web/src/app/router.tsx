@@ -5,11 +5,12 @@ import StarredPage from '../features/drive/StarredPage';
 import RecentPage from '../features/search/RecentPage';
 import SearchPage from '../features/search/SearchPage';
 import TrashPage from '../features/trash/TrashPage';
+import PublicLinkPage from '../features/sharing/PublicLinkPage';
+import SharedWithMePage from '../features/sharing/SharedWithMePage';
 import { AppLayout } from '../layout/AppLayout';
 import AccountPage from '../pages/AccountPage';
 import LoginPage from '../pages/auth/LoginPage';
 import RegisterPage from '../pages/auth/RegisterPage';
-import ComingSoonPage from '../pages/ComingSoonPage';
 import ErrorPage from '../pages/ErrorPage';
 import HomePage from '../pages/HomePage';
 import StoragePage from '../pages/StoragePage';
@@ -25,6 +26,8 @@ export const routes: RouteObject[] = [
           { path: '/register', element: <RegisterPage /> },
         ],
       },
+      // Mở link chia sẻ: không cần đăng nhập.
+      { path: '/s/:token', element: <PublicLinkPage /> },
       {
         element: <ProtectedRoute />,
         children: [
@@ -34,7 +37,7 @@ export const routes: RouteObject[] = [
               { index: true, element: <HomePage /> },
               { path: '/my-drive', element: <DrivePage /> },
               { path: '/my-drive/folders/:folderId', element: <DrivePage /> },
-              { path: '/shared', element: <ComingSoonPage title="Được chia sẻ với tôi" phase={4} /> },
+              { path: '/shared', element: <SharedWithMePage /> },
               { path: '/recent', element: <RecentPage /> },
               { path: '/starred', element: <StarredPage /> },
               { path: '/trash', element: <TrashPage /> },

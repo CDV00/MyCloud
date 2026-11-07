@@ -24,7 +24,7 @@ internal sealed class EnsureRootCommandHandler(IDriveItemRepository items, ICurr
             items.Add(root);
         }
 
-        return ItemDto.From(root, starred: false);
+        return ItemDto.Owned(root);
     }
 }
 
@@ -39,7 +39,7 @@ internal sealed class CreateFolderCommandValidator : AbstractValidator<CreateFol
     }
 }
 
-internal sealed class CreateFolderCommandHandler(ItemAccess access, IDriveItemRepository items)
+internal sealed class CreateFolderCommandHandler(ItemAccess access, IDriveItemRepository items, ItemDtos dtos)
     : ICommandHandler<CreateFolderCommand, ItemDto>
 {
     public async Task<Result<ItemDto>> Handle(CreateFolderCommand request, CancellationToken cancellationToken)
@@ -53,7 +53,7 @@ internal sealed class CreateFolderCommandHandler(ItemAccess access, IDriveItemRe
 
         var folder = DriveItem.CreateFolder(Guid.CreateVersion7(), parent, name);
         items.Add(folder);
-        return ItemDto.From(folder, starred: false);
+        return await dtos.ForAsync(folder, cancellationToken);
     }
 }
 

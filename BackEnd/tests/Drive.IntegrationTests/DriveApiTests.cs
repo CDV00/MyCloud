@@ -13,7 +13,7 @@ public sealed partial class DriveApiTests(DriveApiFactory factory) : IClassFixtu
 {
     private sealed record Item(
         Guid Id, Guid? ParentId, string Kind, string Name, string? MimeType, long SizeBytes, bool IsRoot, long Revision,
-        bool Starred = false, DateTimeOffset? TrashedAt = null, int VersionNo = 0);
+        bool Starred = false, DateTimeOffset? TrashedAt = null, int VersionNo = 0, Guid OwnerId = default, string Role = "");
 
     private sealed record Page(Item[] Items, string? NextPageToken);
 

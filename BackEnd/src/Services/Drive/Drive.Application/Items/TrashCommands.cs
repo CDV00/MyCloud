@@ -17,7 +17,7 @@ internal sealed class TrashItemCommandHandler(ItemAccess access, IDriveItemRepos
 {
     public async Task<Result<ItemDto>> Handle(TrashItemCommand request, CancellationToken cancellationToken)
     {
-        DriveItem item = await access.GetIncludingTrashedAsync(request.ItemId, ItemPermission.Edit, cancellationToken);
+        DriveItem item = await access.GetIncludingTrashedAsync(request.ItemId, ItemPermission.Manage, cancellationToken);
         if (item.Trash(access.UserId, timeProvider.GetUtcNow(), request.ExpectedRevision) is { } subtree)
         {
             items.TrashSubtree(subtree);
@@ -38,7 +38,7 @@ internal sealed class RestoreItemCommandHandler(ItemAccess access, IDriveItemRep
 {
     public async Task<Result<ItemDto>> Handle(RestoreItemCommand request, CancellationToken cancellationToken)
     {
-        DriveItem item = await access.GetIncludingTrashedAsync(request.ItemId, ItemPermission.Edit, cancellationToken);
+        DriveItem item = await access.GetIncludingTrashedAsync(request.ItemId, ItemPermission.Manage, cancellationToken);
         if (!item.IsTrashed)
         {
             return await dtos.ForAsync(item, cancellationToken); // đã khôi phục (gọi lặp)
@@ -62,7 +62,7 @@ internal sealed class PurgeItemCommandHandler(ItemAccess access, ITrashPurger pu
 {
     public async Task<Result> Handle(PurgeItemCommand request, CancellationToken cancellationToken)
     {
-        DriveItem item = await access.GetIncludingTrashedAsync(request.ItemId, ItemPermission.Edit, cancellationToken);
+        DriveItem item = await access.GetIncludingTrashedAsync(request.ItemId, ItemPermission.Manage, cancellationToken);
         if (!item.IsTrashed)
         {
             throw new DriveException.NotInTrash(item.Id);

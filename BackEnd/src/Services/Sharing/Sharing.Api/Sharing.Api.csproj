@@ -1,7 +1,36 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-  <!-- Phase 0: service khung. Phase 4: quyền chia sẻ + OpenFGA — docs/03 §5. -->
+  <!--
+    Quyền truy cập + chia sẻ (docs/03 §5, ADR-014): lưu quyền trong PostgreSQL, tính kế thừa từ danh sách tổ tiên do
+    Drive gửi kèm. Chỉ có gRPC nội bộ — Drive là mặt tiền REST. Một project chia theo tính năng như Storage.
+  -->
+  <PropertyGroup>
+    <UserSecretsId>mycloud-sharing-api</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="EFCore.NamingConventions" />
+    <PackageReference Include="Grpc.Tools">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Protobuf Include="..\..\..\Contracts\Protos\mycloud\sharing\v1\sharing_service.proto"
+              ProtoRoot="..\..\..\Contracts\Protos"
+              GrpcServices="Both"
+              Link="Protos\sharing_service.proto" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Aspire\MyCloud.ServiceDefaults\MyCloud.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Web\MyCloud.BuildingBlocks.Web.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Messaging\MyCloud.BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Grpc\MyCloud.BuildingBlocks.Grpc.csproj" />
+    <ProjectReference Include="..\..\..\Contracts\MyCloud.Contracts.Events\MyCloud.Contracts.Events.csproj" />
   </ItemGroup>
 </Project>

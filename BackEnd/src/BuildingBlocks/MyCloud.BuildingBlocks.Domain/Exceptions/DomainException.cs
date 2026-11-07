@@ -21,6 +21,9 @@ public abstract class NotFoundException(string message) : DomainException("Not F
 /// <summary>Xung đột trạng thái (trùng tên, sai revision...) → 409 / FAILED_PRECONDITION.</summary>
 public abstract class ConflictException(string message) : DomainException("Conflict", message);
 
+/// <summary>Biết item nhưng không đủ quyền cho thao tác này (vd người xem muốn sửa) ⇒ 403.</summary>
+public abstract class ForbiddenException(string message) : DomainException("Forbidden", message);
+
 /// <summary>Bản ghi đã bị người khác sửa (sai <c>If-Match</c>) → 412 / ABORTED.</summary>
 public abstract class PreconditionFailedException(string message) : DomainException("Precondition Failed", message);
 

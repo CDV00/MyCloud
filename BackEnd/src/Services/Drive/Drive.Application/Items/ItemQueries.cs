@@ -21,14 +21,19 @@ internal sealed class GetItemQueryHandler(ItemAccess access, ItemDtos dtos) : IQ
 /// <summary>Breadcrumb: từ gốc tới cha trực tiếp — đọc id tổ tiên từ materialized path, nạp bằng 1 truy vấn.</summary>
 public sealed record GetAncestorsQuery(Guid ItemId) : IQuery<IReadOnlyList<ItemDto>>;
 
-internal sealed class GetAncestorsQueryHandler(ItemAccess access, IDriveItemRepository items)
+internal sealed class GetAncestorsQueryHandler(ItemAccess access, IDriveItemRepository items, ItemDtos dtos)
     : IQueryHandler<GetAncestorsQuery, IReadOnlyList<ItemDto>>
 {
     public async Task<Result<IReadOnlyList<ItemDto>>> Handle(GetAncestorsQuery request, CancellationToken cancellationToken)
     {
         DriveItem item = await access.GetAsync(request.ItemId, ItemPermission.View, cancellationToken);
-        IReadOnlyList<DriveItem> ancestors = await items.FindManyAsync(item.AncestorIds.ToArray(), cancellationToken);
-        return ancestors.OrderBy(a => a.Depth).Select(a => ItemDto.From(a, starred: false)).ToArray();
+        DriveItem[] ancestors = (await items.FindManyAsync(item.AncestorIds.ToArray(), cancellationToken)).OrderBy(a => a.Depth).ToArray();
+
+        // Người được chia sẻ chỉ thấy phần cây từ thư mục được chia sẻ trở xuống (không thấy "Drive của tôi" của chủ).
+        IReadOnlyList<AccessRole> roles = await access.RolesAsync(ancestors, cancellationToken);
+        int firstVisible = Array.FindIndex(roles.ToArray(), r => r >= AccessRole.Viewer);
+        DriveItem[] visible = firstVisible < 0 ? [] : ancestors[firstVisible..];
+        return (await dtos.ForAsync(visible, cancellationToken)).ToArray();
     }
 }
 
@@ -104,7 +109,7 @@ public sealed record ListStarredQuery(int PageSize, string? PageToken) : IQuery<
 
 internal sealed class ListStarredQueryValidator : PagedQueryValidator<ListStarredQuery>;
 
-internal sealed class ListStarredQueryHandler(ItemAccess access, IStarRepository stars)
+internal sealed class ListStarredQueryHandler(ItemAccess access, IStarRepository stars, ItemDtos dtos)
     : IQueryHandler<ListStarredQuery, ItemPage>
 {
     public async Task<Result<ItemPage>> Handle(ListStarredQuery request, CancellationToken cancellationToken)
@@ -112,9 +117,12 @@ internal sealed class ListStarredQueryHandler(ItemAccess access, IStarRepository
         int offset = PageTokens.DecodeOrZero(request.PageToken);
         IReadOnlyList<DriveItem> page = await stars.ListStarredItemsAsync(access.UserId, offset, request.PageSize + 1, cancellationToken);
         bool hasMore = page.Count > request.PageSize;
-        return new ItemPage(
-            page.Take(request.PageSize).Select(i => ItemDto.From(i, starred: true)).ToArray(),
-            hasMore ? PageTokens.Encode(offset + request.PageSize) : null);
+
+        // Item của người khác mà quyền đã bị thu hồi: ẩn (sao vẫn còn, quay lại nếu được chia sẻ lại).
+        DriveItem[] current = page.Take(request.PageSize).ToArray();
+        IReadOnlyList<AccessRole> roles = await access.RolesAsync(current, cancellationToken);
+        DriveItem[] visible = current.Where((_, i) => roles[i] >= AccessRole.Viewer).ToArray();
+        return new ItemPage(await dtos.ForAsync(visible, cancellationToken), hasMore ? PageTokens.Encode(offset + request.PageSize) : null);
     }
 }
 

@@ -17,6 +17,7 @@ internal sealed class DomainExceptionHandler(IProblemDetailsService problemDetai
             NotFoundException e => (StatusCodes.Status404NotFound, e.Title, e.Message),
             BadRequestException e => (StatusCodes.Status400BadRequest, e.Title, e.Message),
             ConflictException e => (StatusCodes.Status409Conflict, e.Title, e.Message),
+            ForbiddenException e => (StatusCodes.Status403Forbidden, e.Title, e.Message),
             PreconditionFailedException e => (StatusCodes.Status412PreconditionFailed, e.Title, e.Message),
             LimitExceededException e => (StatusCodes.Status413PayloadTooLarge, e.Title, e.Message),
             DomainException e => (StatusCodes.Status400BadRequest, e.Title, e.Message),

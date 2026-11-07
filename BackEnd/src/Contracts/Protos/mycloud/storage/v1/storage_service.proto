@@ -7,6 +7,8 @@ import "google/protobuf/timestamp.proto";
 option csharp_namespace = "MyCloud.Contracts.Storage.V1";
 
 // Byte của file và dung lượng. Chỉ Drive gọi (nội bộ, h2c); client trình duyệt dùng REST của Storage để ký thêm part.
+// Gọi bằng token người dùng ⇒ user_id phải là chính họ; gọi bằng định danh service (Drive, ADR-014) ⇒ user_id là chủ
+// sở hữu mà Drive đã kiểm tra quyền thay.
 // Mọi upload là S3 multipart (file nhỏ = 1 part). Xem docs/03 §4 và ADR-006.
 service StorageService {
   // Giữ chỗ quota, mở multipart upload, ký URL cho các part đầu.
@@ -42,6 +44,9 @@ message CreateUploadSessionRequest {
   // Gốc URL mà trình duyệt dùng (vd http://mycloud.localhost) — presigned URL được ký cho đúng host này.
   // Bỏ trống: dùng Storage:PublicBaseUrl trong cấu hình.
   string public_base_url = 4;
+  // Người đang upload (có thể khác user_id — chủ sở hữu thư mục, người trả dung lượng — khi upload vào thư mục được
+  // chia sẻ). Chỉ người này được ký thêm URL part qua REST. Rỗng = user_id.
+  string uploader_id = 5;
 }
 
 message CreateUploadSessionResponse {
@@ -110,8 +115,11 @@ message GetQuotaResponse {
 }
 
 message CopyBlobRequest {
+  // Người nhận bản sao (trả dung lượng).
   string user_id = 1;
   string source_blob_id = 2;
+  // Chủ sở hữu blob nguồn (sao chép file được chia sẻ). Rỗng = user_id. Chỉ service được gọi với giá trị khác user_id.
+  string source_user_id = 3;
 }
 
 message CopyBlobResponse {

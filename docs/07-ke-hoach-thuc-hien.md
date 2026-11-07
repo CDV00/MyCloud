@@ -182,26 +182,58 @@ Sửa thêm trong Phase 0 (vì code được chuyển sang cấu trúc mới): b
 
 ---
 
-## Phase 4 — Chia sẻ & Thông báo (≈ 3–4 tuần)
+## Phase 4 — Chia sẻ & Thông báo ✅
 
-**Sharing service**
-- [ ] OpenFGA: container, store, authorization model (xem [03 §5](03-dac-ta-service.md#5-sharing-service)), migration model trong CI.
-- [ ] Consumer `ItemCreated` / `ItemMoved` / `ItemsPurged` → tuple; `fga_tuple_outbox` + worker đảm bảo DB và OpenFGA nhất quán.
-- [ ] REST quyền: liệt kê (kèm quyền kế thừa), thêm theo email (gRPC Identity), đổi vai trò, thu hồi.
-- [ ] Link chia sẻ: tạo / tắt / truy cập anonymous; mật khẩu & hạn dùng.
-- [ ] gRPC `AuthorizationService` (Check, BatchCheck với contextual tuples tổ tiên, GetEffectiveRole).
+**Định danh service** ([ADR-014](08-adr.md#adr-014))
+- [x] Identity: `POST /connect/token` (client credentials, nội bộ), token cùng JWKS, scope `mycloud.internal`; policy `service`.
+- [x] `BuildingBlocks`: `AddServiceIdentity()` (lấy + cache token), `AddGrpcServiceClient<T>()`; AppHost sinh secret của Drive.
+- [x] Identity gRPC `UserService` (FindUserByEmail, BatchGetUsers — chỉ service) + REST `GET /users?ids=` cho tên hiển thị.
 
-**Drive**: `IItemAuthorizer` = fast-path chủ sở hữu → Sharing; trả `capabilities` cho từng item; hỗ trợ `X-Share-Token`.
+**Sharing service** (PostgreSQL thay OpenFGA — ADR-014)
+- [x] `permissions`, `share_links` (hash token, mật khẩu PBKDF2), outbox/inbox; consumer `ItemsPurged` xoá quyền + link.
+- [x] gRPC `SharingService`: CheckAccess / BatchCheckAccess (owner > quyền trực tiếp / kế thừa từ tổ tiên > link), List /
+      Grant / Revoke, Create / List / Disable / ResolveLink. Publish `ItemShared`, `ShareRoleChanged`, `ShareRevoked`.
 
-**Search**: `access_grants`, `GET /shared-with-me`, lọc kết quả tìm kiếm theo quyền + `BatchCheck` xác nhận.
+**Drive**
+- [x] `IItemAuthorizer` = fast-path chủ sở hữu → Sharing (một lời gọi cho cả lô); vai trò của người gọi trong mọi `ItemDto`
+      (`role`, `ownerId`, `modifiedBy`); không có quyền ⇒ 404, thiếu quyền ⇒ 403 `DRIVE.ACCESS_DENIED`.
+- [x] Quyền: xem (viewer+), sửa / chia sẻ (editor+), thùng rác / khôi phục / xoá vĩnh viễn (chỉ chủ sở hữu). Item trong
+      thùng rác chỉ chủ sở hữu thấy. Breadcrumb của người được chia sẻ bắt đầu từ thư mục được chia sẻ.
+- [x] REST chia sẻ: `GET /items/{id}/sharing`, `POST/PATCH/DELETE /items/{id}/permissions`, `POST/DELETE /items/{id}/links`.
+- [x] Link công khai: `GET /public/links/{token}`, `/items/{id}`, `/children`, `/ancestors`, `POST /download-url` (ẩn danh,
+      mật khẩu trong header `X-Link-Password`, Gateway rate limit 120/phút/IP).
+- [x] Người chỉnh sửa upload vào thư mục được chia sẻ: chủ sở hữu trả dung lượng; sao chép file được chia sẻ vào Drive mình.
+
+**Storage**: tin token service; `uploader_id` (chỉ người upload ký part); `CopyBlob` từ chủ sở hữu khác; publish
+`QuotaThresholdReached` (80 / 90 / 100 %).
+
+**Search**: `access_grants` (từ event của Sharing), `GET /shared-with-me`, tìm kiếm / Gần đây / hoạt động gồm cả item được
+chia sẻ (và ẩn khi chủ sở hữu xoá), lọc `owner=me|others`.
 
 **Notification service**
-- [ ] Lưu liên hệ từ `UserRegistered`; email qua SMTP (Mailpit dev) cho `ItemShared`, `QuotaThresholdReached`.
-- [ ] Thông báo in-app + SignalR hub (Gateway proxy WebSocket, Redis backplane).
+- [x] Liên hệ từ `UserRegistered` / `UserProfileChanged`; email chào mừng và "đã chia sẻ với bạn" qua SMTP (Mailpit), có
+      lời nhắn; thông báo trong app cho `ItemShared`, `QuotaThresholdReached`.
+- [x] Email và đẩy realtime là bản tin nội bộ đi qua outbox (chỉ xảy ra khi thông báo đã lưu, retry riêng).
+- [x] REST `GET /notifications`, `POST /notifications/{id}/read`, `POST /notifications/read-all`; SignalR hub qua Gateway
+      (token trong query `access_token` chỉ cho đường dẫn `/hubs/`), Redis backplane.
 
-**Frontend**: hộp thoại chia sẻ (thêm người, vai trò, link), trang "Được chia sẻ với tôi", trang mở link công khai, chuông thông báo realtime.
+**Frontend**: hộp thoại chia sẻ (thêm theo email, vai trò, lời nhắn, đổi / thu hồi, quyền kế thừa, link + mật khẩu),
+"Được chia sẻ với tôi", trang mở link `/s/:token` (không cần đăng nhập), chuông thông báo realtime, ẩn thao tác theo vai trò.
 
-**Test**: **ma trận quyền** (owner/editor/commenter/viewer/không quyền × xem/sửa/xoá/chia sẻ × trực tiếp/kế thừa/qua link) chạy tự động.
+**Test**
+- [x] **Ma trận quyền** chạy qua Drive + Sharing thật (gRPC trong tiến trình): owner / editor / commenter / viewer / không
+      quyền × trực tiếp / kế thừa × xem / sửa / chia sẻ / xoá; link (duyệt, tải, ngoài phạm vi, tắt link, mật khẩu).
+- [x] Drive (+17): chia sẻ theo email, thu hồi tức thì, đổi vai trò, upload của người chỉnh sửa, không di chuyển sang Drive
+      khác, breadcrumb, item trong thùng rác biến mất với người được chia sẻ, `ItemsPurged` xoá quyền ở Sharing.
+- [x] Identity (+3), Storage (+3, token service), Notification (5, mới), frontend menu theo vai trò (+3).
+
+**Lệch so với kế hoạch**
+- **Không dùng OpenFGA** — quyền trong PostgreSQL của Sharing, kế thừa tính từ tổ tiên do Drive gửi (ADR-014).
+- REST chia sẻ nằm ở **Drive** (`/api/drive/v1/items/{id}/permissions…`) thay vì Sharing; Sharing chỉ có gRPC nội bộ.
+- Link chỉ cấp quyền **xem** (viewer / commenter): sửa cần biết ai sửa ⇒ chỉ cấp cho người dùng cụ thể.
+- Search không gọi `BatchCheck` để xác nhận trang kết quả: `access_grants` cập nhật theo event (trễ vài giây); mở item vẫn
+  luôn được Drive kiểm tra quyền tức thì.
+- Chưa có "người được chia sẻ tự rời khỏi mục" và chia sẻ cho người chưa có tài khoản (lời mời qua email).
 
 **Hoàn thành khi**: A chia sẻ thư mục cho B quyền xem → B nhận thông báo realtime, thấy thư mục và mọi file con, không sửa được; A thu hồi → B mất quyền ngay lập tức.
 

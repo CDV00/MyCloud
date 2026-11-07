@@ -28,5 +28,13 @@
               ProtoRoot="..\..\..\Contracts\Protos"
               GrpcServices="Client"
               Link="Protos\storage_service.proto" />
+    <Protobuf Include="..\..\..\Contracts\Protos\mycloud\sharing\v1\sharing_service.proto"
+              ProtoRoot="..\..\..\Contracts\Protos"
+              GrpcServices="Client"
+              Link="Protos\sharing_service.proto" />
+    <Protobuf Include="..\..\..\Contracts\Protos\mycloud\identity\v1\user_service.proto"
+              ProtoRoot="..\..\..\Contracts\Protos"
+              GrpcServices="Client"
+              Link="Protos\user_service.proto" />
   </ItemGroup>
 </Project>

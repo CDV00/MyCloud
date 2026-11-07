@@ -15,6 +15,14 @@ export interface SearchHit {
   category: Category;
   sizeBytes: number;
   modifiedAt: string;
+  ownerId: string;
+}
+
+export interface SharedHit {
+  item: SearchHit;
+  role: 'viewer' | 'commenter' | 'editor';
+  sharedBy: string;
+  sharedAt: string;
 }
 
 export interface SearchPage {
@@ -27,6 +35,7 @@ export interface SearchFilters {
   type?: Category | null;
   /** ISO 8601 — chỉ item sửa từ thời điểm này. */
   modifiedAfter?: string | null;
+  owner?: 'me' | 'others' | null;
 }
 
 export interface RecentHit {
@@ -57,6 +66,7 @@ export function search(filters: SearchFilters, pageToken?: string | null): Promi
   const query = new URLSearchParams({ q: filters.q });
   if (filters.type) query.set('type', filters.type);
   if (filters.modifiedAfter) query.set('modifiedAfter', filters.modifiedAfter);
+  if (filters.owner) query.set('owner', filters.owner);
   if (pageToken) query.set('pageToken', pageToken);
   return apiFetch<SearchPage>(`${SEARCH}/search?${query}`);
 }
@@ -65,3 +75,6 @@ export const getRecent = () => apiFetch<RecentHit[]>(`${SEARCH}/recent`);
 
 export const getActivity = (itemId: string) =>
   apiFetch<ActivityEntry[]>(`${SEARCH}/items/${itemId}/activity`);
+
+/** Item được chia sẻ trực tiếp cho tôi, mới chia sẻ trước. */
+export const getSharedWithMe = () => apiFetch<SharedHit[]>(`${SEARCH}/shared-with-me`);

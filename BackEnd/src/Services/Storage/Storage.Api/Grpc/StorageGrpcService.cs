@@ -1,6 +1,7 @@
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using MyCloud.BuildingBlocks.Application.Abstractions;
+using MyCloud.BuildingBlocks.Authentication;
 using MyCloud.Contracts.Storage.V1;
 using Storage.Api.Uploads;
 
@@ -10,12 +11,15 @@ namespace Storage.Api.Grpc;
 /// gRPC cho Drive (docs/03 §4). Drive chuyển tiếp JWT của người dùng; <c>user_id</c> trong request phải trùng với
 /// người dùng của token (phòng thủ nhiều lớp) — lỗi nghiệp vụ được ServerExceptionInterceptor đổi thành status code.
 /// </summary>
-public sealed class StorageGrpcService(UploadService uploads, ICurrentUser currentUser) : StorageService.StorageServiceBase
+public sealed class StorageGrpcService(UploadService uploads, ICurrentUser currentUser, IHttpContextAccessor http)
+    : StorageService.StorageServiceBase
 {
     public override async Task<CreateUploadSessionResponse> CreateUploadSession(CreateUploadSessionRequest request, ServerCallContext context)
     {
+        Guid owner = Caller(request.UserId);
+        Guid uploader = string.IsNullOrEmpty(request.UploaderId) ? owner : Caller(request.UploaderId);
         UploadSession session = await uploads.CreateSessionAsync(
-            Caller(request.UserId), request.SizeBytes, request.MimeType, Empty(request.PublicBaseUrl), context.CancellationToken);
+            owner, uploader, request.SizeBytes, request.MimeType, Empty(request.PublicBaseUrl), context.CancellationToken);
 
         var response = new CreateUploadSessionResponse
         {
@@ -74,15 +78,30 @@ public sealed class StorageGrpcService(UploadService uploads, ICurrentUser curre
 
     public override async Task<CopyBlobResponse> CopyBlob(CopyBlobRequest request, ServerCallContext context)
     {
-        (Guid blobId, long size) = await uploads.CopyAsync(Caller(request.UserId), ParseId(request.SourceBlobId), context.CancellationToken);
+        Guid user = Caller(request.UserId);
+        Guid sourceOwner = string.IsNullOrEmpty(request.SourceUserId) ? user : Caller(request.SourceUserId);
+        (Guid blobId, long size) = await uploads.CopyAsync(user, sourceOwner, ParseId(request.SourceBlobId), context.CancellationToken);
         return new CopyBlobResponse { BlobId = blobId.ToString(), SizeBytes = size };
     }
 
+    /// <summary>
+    /// Token người dùng ⇒ <paramref name="userId"/> phải là chính họ. Token của service (Drive, ADR-014) ⇒ tin
+    /// <paramref name="userId"/>: Drive đã kiểm tra quyền thay (vd người được chia sẻ tải file của chủ sở hữu).
+    /// </summary>
     private Guid Caller(string userId)
     {
-        Guid authenticated = currentUser.GetRequiredUserId();
-        return Guid.TryParse(userId, out Guid requested) && requested == authenticated
-            ? authenticated
+        if (!Guid.TryParse(userId, out Guid requested))
+        {
+            throw new InvalidUploadException("Invalid user id.");
+        }
+
+        if (http.HttpContext?.User.IsService() == true)
+        {
+            return requested;
+        }
+
+        return requested == currentUser.GetRequiredUserId()
+            ? requested
             : throw new UnauthorizedAccessException("user_id does not match the authenticated user.");
     }
 

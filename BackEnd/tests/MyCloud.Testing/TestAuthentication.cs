@@ -5,6 +5,15 @@ namespace MyCloud.Testing;
 
 public static class TestAuthentication
 {
+    /// <summary>Service dưới test lấy token service ký bằng khoá test thay vì gọi Identity.</summary>
+    public static IServiceCollection UseTestServiceToken(this IServiceCollection services, string clientId = "drive") =>
+        services.AddSingleton<MyCloud.BuildingBlocks.Authentication.IServiceTokenProvider>(new TestServiceTokenProvider(clientId));
+
+    private sealed class TestServiceTokenProvider(string clientId) : MyCloud.BuildingBlocks.Authentication.IServiceTokenProvider
+    {
+        public Task<string> GetTokenAsync(CancellationToken ct) => Task.FromResult(TestJwt.CreateServiceToken(clientId));
+    }
+
     /// <summary>
     /// Service dưới test tin khoá của <see cref="TestJwt"/> thay vì tải JWKS từ Identity (không chạy trong test).
     /// Configure (đăng ký sau Program) chạy trước PostConfigure của JwtBearer ⇒ không tạo ConfigurationManager.

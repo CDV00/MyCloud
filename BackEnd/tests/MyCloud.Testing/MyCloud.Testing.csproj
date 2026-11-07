@@ -13,4 +13,7 @@
     <PackageReference Remove="xunit.runner.visualstudio" />
     <PackageReference Remove="coverlet.collector" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BuildingBlocks\MyCloud.BuildingBlocks.Authentication\MyCloud.BuildingBlocks.Authentication.csproj" />
+  </ItemGroup>
 </Project>

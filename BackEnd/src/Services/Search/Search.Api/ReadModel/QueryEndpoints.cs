@@ -17,10 +17,13 @@ public sealed class QueryEndpoints : ICarterModule
 {
     private const int DefaultPageSize = 50;
     private const int MaxPageSize = 100;
-    private const int MaxHiddenRoots = 5_000;
 
     public sealed record SearchHit(
-        Guid Id, Guid? ParentId, string Kind, string Name, string? MimeType, string Category, long SizeBytes, DateTimeOffset ModifiedAt);
+        Guid Id, Guid? ParentId, string Kind, string Name, string? MimeType, string Category, long SizeBytes, DateTimeOffset ModifiedAt,
+        Guid OwnerId);
+
+    /// <summary>Item được chia sẻ trực tiếp cho tôi.</summary>
+    public sealed record SharedHit(SearchHit Item, string Role, Guid SharedBy, DateTimeOffset SharedAt);
 
     public sealed record SearchPage(IReadOnlyList<SearchHit> Items, string? NextPageToken);
 
@@ -46,6 +49,7 @@ public sealed class QueryEndpoints : ICarterModule
         api.MapGet("/search", SearchAsync).WithName("SearchItems");
         api.MapGet("/recent", RecentAsync).WithName("ListRecent");
         api.MapGet("/items/{itemId:guid}/activity", ActivityAsync).WithName("ListActivity");
+        api.MapGet("/shared-with-me", SharedWithMeAsync).WithName("ListSharedWithMe");
     }
 
     /// <summary>
@@ -58,6 +62,7 @@ public sealed class QueryEndpoints : ICarterModule
         CancellationToken ct,
         string? q = null,
         string? type = null,
+        string? owner = null,
         DateTimeOffset? modifiedAfter = null,
         int pageSize = DefaultPageSize,
         string? pageToken = null)
@@ -70,14 +75,27 @@ public sealed class QueryEndpoints : ICarterModule
             return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid search parameters.");
         }
 
-        if (term.Length == 0 && category is null && modifiedAfter is null)
+        if (owner is not (null or "" or "me" or "others"))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "owner must be 'me' or 'others'.");
+        }
+
+        if (term.Length == 0 && category is null && modifiedAfter is null && string.IsNullOrEmpty(owner))
         {
             return Results.Ok(new SearchPage([], null));
         }
 
         Guid me = user.GetRequiredUserId();
         var f = Builders<ItemDocument>.Filter;
-        FilterDefinition<ItemDocument> filter = await VisibleAsync(db, me, ct);
+        FilterDefinition<ItemDocument> filter = (await Visibility.ForAsync(db, me, ct)).Filter;
+        if (owner == "me")
+        {
+            filter &= f.Eq(x => x.OwnerId, me);
+        }
+        else if (owner == "others")
+        {
+            filter &= f.Ne(x => x.OwnerId, me);
+        }
         if (term.Length > 0)
         {
             filter &= f.Regex(x => x.NameFolded, new BsonRegularExpression(Regex.Escape(term)));
@@ -122,7 +140,7 @@ public sealed class QueryEndpoints : ICarterModule
         }
 
         var f = Builders<ItemDocument>.Filter;
-        FilterDefinition<ItemDocument> filter = await VisibleAsync(db, me, ct) & f.In(x => x.Id, recent.Select(r => r.ItemId));
+        FilterDefinition<ItemDocument> filter = (await Visibility.ForAsync(db, me, ct)).Filter & f.In(x => x.Id, recent.Select(r => r.ItemId));
         Dictionary<Guid, ItemDocument> items = (await db.Items.Find(filter).ToListAsync(ct)).ToDictionary(d => d.Id);
 
         return Results.Ok(recent
@@ -140,9 +158,17 @@ public sealed class QueryEndpoints : ICarterModule
             return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid limit.");
         }
 
+        // Chỉ khi item thấy được (của tôi / được chia sẻ): không thấy ⇒ danh sách rỗng, không lộ gì.
+        Guid me = user.GetRequiredUserId();
+        FilterDefinition<ItemDocument> visible = (await Visibility.ForAsync(db, me, ct)).Filter;
+        ItemDocument? item = await db.Items.Find(visible & Builders<ItemDocument>.Filter.Eq(x => x.Id, itemId)).FirstOrDefaultAsync(ct);
+        if (item is null)
+        {
+            return Results.Ok(Array.Empty<ActivityEntry>());
+        }
+
         var f = Builders<ActivityDocument>.Filter;
-        // Lọc theo chủ sở hữu ngay trong truy vấn: item của người khác ⇒ danh sách rỗng, không lộ gì.
-        FilterDefinition<ActivityDocument> filter = f.Eq(x => x.OwnerId, user.GetRequiredUserId())
+        FilterDefinition<ActivityDocument> filter = f.Eq(x => x.OwnerId, item.OwnerId)
             & (f.Eq(x => x.ItemId, itemId) | f.AnyEq(x => x.AncestorIds, itemId));
 
         List<ActivityDocument> entries = await db.Activity.Find(filter).SortByDescending(x => x.At).Limit(limit).ToListAsync(ct);
@@ -150,25 +176,31 @@ public sealed class QueryEndpoints : ICarterModule
             a.Id, a.ItemId, a.Kind, a.Name, a.ActorId, a.Action, a.At, a.PreviousName, a.FromFolder, a.ToFolder, a.VersionNo)));
     }
 
-    /// <summary>
-    /// Item của tôi, không phải thư mục gốc, không ở thùng rác: chính nó không bị đánh dấu và không tổ tiên nào là gốc
-    /// của một nhóm trong thùng rác.
-    /// </summary>
-    private static async Task<FilterDefinition<ItemDocument>> VisibleAsync(SearchDb db, Guid me, CancellationToken ct)
-    {
-        var f = Builders<ItemDocument>.Filter;
-        List<Guid> hiddenRoots = await db.Items
-            .Find(f.Eq(x => x.OwnerId, me) & f.Eq(x => x.Trashed, true))
-            .Project(x => x.Id)
-            .Limit(MaxHiddenRoots)
-            .ToListAsync(ct);
-
-        FilterDefinition<ItemDocument> visible = f.Eq(x => x.OwnerId, me) & f.Ne(x => x.ParentId, null) & f.Ne(x => x.Trashed, true);
-        return hiddenRoots.Count == 0 ? visible : visible & f.AnyNin(x => x.AncestorIds, hiddenRoots);
-    }
-
     private static SearchHit ToHit(ItemDocument d) =>
-        new(d.Id, d.ParentId, d.Kind, d.Name, d.MimeType, d.Category, d.SizeBytes, d.UpdatedAt);
+        new(d.Id, d.ParentId, d.Kind, d.Name, d.MimeType, d.Category, d.SizeBytes, d.UpdatedAt, d.OwnerId);
+
+    /// <summary>"Được chia sẻ với tôi": item được chia sẻ trực tiếp (không liệt kê từng item con), mới chia sẻ trước.</summary>
+    private static async Task<IResult> SharedWithMeAsync(SearchDb db, ICurrentUser user, CancellationToken ct)
+    {
+        Guid me = user.GetRequiredUserId();
+        (FilterDefinition<ItemDocument> visible, IReadOnlyList<AccessGrantDocument> grants) = await Visibility.ForAsync(db, me, ct);
+        if (grants.Count == 0)
+        {
+            return Results.Ok(Array.Empty<SharedHit>());
+        }
+
+        var f = Builders<ItemDocument>.Filter;
+        Dictionary<Guid, ItemDocument> items = (await db.Items
+                .Find(visible & f.In(x => x.Id, grants.Select(g => g.ItemId)))
+                .ToListAsync(ct))
+            .ToDictionary(d => d.Id);
+        return Results.Ok(grants
+            .Where(g => items.ContainsKey(g.ItemId))
+            .OrderByDescending(g => g.SharedAt)
+            .DistinctBy(g => g.ItemId)
+            .Select(g => new SharedHit(ToHit(items[g.ItemId]), g.Role, g.SharedBy, g.SharedAt))
+            .ToArray());
+    }
 
     private static string EncodeOffset(int offset) =>
         Base64Url.EncodeToString(Encoding.ASCII.GetBytes("o:" + offset.ToString(CultureInfo.InvariantCulture)));

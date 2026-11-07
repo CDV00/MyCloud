@@ -13,6 +13,7 @@ public sealed class PendingUpload : Entity<Guid>
     {
     }
 
+    /// <summary>Người upload (chỉ họ hoàn tất / huỷ được). Chủ sở hữu file là chủ thư mục đích.</summary>
     public Guid OwnerId { get; private set; }
 
     public Guid ParentId { get; private set; }

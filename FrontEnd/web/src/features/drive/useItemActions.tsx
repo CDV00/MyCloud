@@ -18,6 +18,7 @@ import { DetailsPanel, type DetailsTab } from './DetailsPanel';
 import { downloadItem, folderPath } from './download';
 import { MoveDialog } from './MoveDialog';
 import { refreshDrive } from './queries';
+import { ShareDialog } from '../sharing/ShareDialog';
 import { RenameDialog } from './RenameDialog';
 
 interface Notice {
@@ -38,6 +39,7 @@ export interface ItemActions {
   /** Hỏi xác nhận rồi xoá vĩnh viễn. */
   purge(items: DriveItem[]): void;
   details(item: DriveItem, tab?: DetailsTab): void;
+  share(item: Pick<DriveItem, 'id' | 'name'>): void;
   uploadVersion(item: Pick<DriveItem, 'id' | 'name' | 'parentId'>): void;
   showLocation(item: Pick<DriveItem, 'parentId'>): void;
   /** Hộp thoại, panel, thông báo — đặt một lần trong trang. */
@@ -57,6 +59,7 @@ export function useItemActions(options: { onChanged?: () => void } = {}): ItemAc
   const [renaming, setRenaming] = useState<DriveItem | null>(null);
   const [moving, setMoving] = useState<DriveItem[]>([]);
   const [details, setDetails] = useState<{ id: string; tab: DetailsTab } | null>(null);
+  const [sharing, setSharing] = useState<Pick<DriveItem, 'id' | 'name'> | null>(null);
   const [purging, setPurging] = useState<DriveItem[]>([]);
   const [notice, setNotice] = useState<Notice | null>(null);
 
@@ -107,6 +110,7 @@ export function useItemActions(options: { onChanged?: () => void } = {}): ItemAc
       }),
     purge: setPurging,
     details: (item, tab = 'details') => setDetails({ id: item.id, tab }),
+    share: setSharing,
     uploadVersion(item) {
       setVersionTarget(item);
       versionInput.current?.click();
@@ -121,6 +125,7 @@ export function useItemActions(options: { onChanged?: () => void } = {}): ItemAc
     <>
       <RenameDialog item={renaming} onClose={() => setRenaming(null)} />
       <MoveDialog items={moving} onClose={() => setMoving([])} />
+      <ShareDialog item={sharing} onClose={() => setSharing(null)} />
       <DetailsPanel
         itemId={details?.id ?? null}
         tab={details?.tab ?? 'details'}

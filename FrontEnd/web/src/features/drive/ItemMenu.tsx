@@ -8,13 +8,14 @@ import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutli
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import HistoryIcon from '@mui/icons-material/History';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import PersonAddAltOutlinedIcon from '@mui/icons-material/PersonAddAltOutlined';
 import RestoreFromTrashIcon from '@mui/icons-material/RestoreFromTrash';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import StarIcon from '@mui/icons-material/Star';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
 import { Divider, IconButton, ListItemIcon, Menu, MenuItem, Paper, Tooltip, Typography } from '@mui/material';
 import type { ReactNode } from 'react';
-import type { DriveItem } from '../../api/drive';
+import { canEdit, canManage, type DriveItem } from '../../api/drive';
 import type { ItemActions } from './useItemActions';
 
 export interface MenuState {
@@ -82,6 +83,7 @@ export function ItemMenu({
     if (mode === 'view') {
       if (single) {
         entries.push(
+          entry(<PersonAddAltOutlinedIcon fontSize="small" />, 'Chia sẻ', () => actions.share(item)),
           entry(
             <FolderOpenIcon fontSize="small" />,
             'Mở vị trí tệp',
@@ -92,15 +94,29 @@ export function ItemMenu({
         );
       }
     } else {
+      // Thao tác hiện theo vai trò (người xem: mở / chia sẻ (xem danh sách) / sao chép / gắn sao; thùng rác: chủ sở hữu).
+      const editable = targets.every(canEdit);
+      const manageable = targets.every(canManage);
       if (single) {
         entries.push(
-          entry(<DriveFileRenameOutlineIcon fontSize="small" />, 'Đổi tên', () => actions.rename(item)),
-          entry(<ContentCopyIcon fontSize="small" />, 'Tạo bản sao', () => actions.copy(item)),
+          entry(<PersonAddAltOutlinedIcon fontSize="small" />, 'Chia sẻ', () => actions.share(item)),
+        );
+        if (editable) {
+          entries.push(
+            entry(<DriveFileRenameOutlineIcon fontSize="small" />, 'Đổi tên', () => actions.rename(item)),
+          );
+        }
+
+        entries.push(entry(<ContentCopyIcon fontSize="small" />, 'Tạo bản sao', () => actions.copy(item)));
+      }
+
+      if (editable) {
+        entries.push(
+          entry(<DriveFileMoveOutlinedIcon fontSize="small" />, 'Di chuyển', () => actions.move(targets)),
         );
       }
 
       entries.push(
-        entry(<DriveFileMoveOutlinedIcon fontSize="small" />, 'Di chuyển', () => actions.move(targets)),
         allStarred
           ? entry(<StarIcon fontSize="small" />, 'Bỏ gắn dấu sao', () => actions.star(targets, false))
           : entry(<StarBorderIcon fontSize="small" />, 'Gắn dấu sao', () => actions.star(targets, true)),
@@ -115,17 +131,23 @@ export function ItemMenu({
             entry(<HistoryIcon fontSize="small" />, 'Quản lý phiên bản', () =>
               actions.details(item, 'versions'),
             ),
-            entry(<UploadFileOutlinedIcon fontSize="small" />, 'Tải lên phiên bản mới', () =>
-              actions.uploadVersion(item),
-            ),
           );
+          if (editable) {
+            entries.push(
+              entry(<UploadFileOutlinedIcon fontSize="small" />, 'Tải lên phiên bản mới', () =>
+                actions.uploadVersion(item),
+              ),
+            );
+          }
         }
       }
 
-      entries.push(
-        <Divider key="divider" />,
-        entry(<DeleteOutlineIcon fontSize="small" />, 'Chuyển vào thùng rác', () => actions.trash(targets)),
-      );
+      if (manageable) {
+        entries.push(
+          <Divider key="divider" />,
+          entry(<DeleteOutlineIcon fontSize="small" />, 'Chuyển vào thùng rác', () => actions.trash(targets)),
+        );
+      }
     }
   }
 

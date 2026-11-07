@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package mycloud.sharing.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "MyCloud.Contracts.Sharing.V1";
+
+// Quyền truy cập và chia sẻ (docs/03 §5, ADR-014). Chỉ gọi nội bộ bằng định danh service; Drive là mặt tiền REST:
+// Drive biết chủ sở hữu và tổ tiên của item nên gửi kèm trong mọi request ⇒ Sharing không cần bản sao cây thư mục,
+// quyền kế thừa luôn đúng ngay cả khi item vừa được tạo / di chuyển.
+service SharingService {
+  // Vai trò hiệu lực của một chủ thể (người dùng và/hoặc link) trên item = cao nhất trong: chủ sở hữu, quyền trực tiếp,
+  // quyền kế thừa từ tổ tiên, link.
+  rpc CheckAccess(CheckAccessRequest) returns (CheckAccessResponse);
+  rpc BatchCheckAccess(BatchCheckAccessRequest) returns (BatchCheckAccessResponse);
+
+  // Ai có quyền: trên chính item và kế thừa từ tổ tiên.
+  rpc ListPermissions(ListPermissionsRequest) returns (ListPermissionsResponse);
+  // Cấp hoặc đổi vai trò (đã có quyền trực tiếp ⇒ cập nhật). Publish ItemShared / ShareRoleChanged.
+  rpc GrantPermission(GrantPermissionRequest) returns (Permission);
+  rpc RevokePermission(RevokePermissionRequest) returns (RevokePermissionResponse);
+
+  rpc CreateLink(CreateLinkRequest) returns (CreateLinkResponse);
+  rpc ListLinks(ListLinksRequest) returns (ListLinksResponse);
+  rpc DisableLink(DisableLinkRequest) returns (DisableLinkResponse);
+  // Link còn hiệu lực ⇒ item gốc của link. Sai/thiếu mật khẩu ⇒ requires_password = true (không lộ item).
+  rpc ResolveLink(ResolveLinkRequest) returns (ResolveLinkResponse);
+}
+
+enum Role {
+  ROLE_NONE = 0;
+  ROLE_VIEWER = 1;
+  ROLE_COMMENTER = 2;
+  ROLE_EDITOR = 3;
+  ROLE_OWNER = 4;
+}
+
+// Item cần kiểm tra cùng ngữ cảnh do Drive cung cấp.
+message ItemRef {
+  string item_id = 1;
+  string owner_id = 2;
+  // Từ gốc tới cha trực tiếp.
+  repeated string ancestor_ids = 3;
+}
+
+message Principal {
+  // Rỗng = ẩn danh.
+  string user_id = 1;
+  // Token của link chia sẻ (nếu truy cập qua link) và mật khẩu (nếu link có đặt).
+  string link_token = 2;
+  string link_password = 3;
+}
+
+message CheckAccessRequest {
+  Principal principal = 1;
+  ItemRef item = 2;
+}
+
+message CheckAccessResponse {
+  Role role = 1;
+}
+
+message BatchCheckAccessRequest {
+  Principal principal = 1;
+  repeated ItemRef items = 2;
+}
+
+message BatchCheckAccessResponse {
+  // Cùng thứ tự với items.
+  repeated Role roles = 1;
+}
+
+message Permission {
+  string id = 1;
+  string item_id = 2;
+  string user_id = 3;
+  Role role = 4;
+  string granted_by = 5;
+  google.protobuf.Timestamp created_at = 6;
+  // false = kế thừa từ tổ tiên item_id.
+  bool direct = 7;
+}
+
+message ListPermissionsRequest {
+  ItemRef item = 1;
+}
+
+message ListPermissionsResponse {
+  repeated Permission permissions = 1;
+}
+
+message GrantPermissionRequest {
+  ItemRef item = 1;
+  string item_name = 2;
+  // "folder" | "file"
+  string item_kind = 3;
+  string user_id = 4;
+  Role role = 5;
+  string granted_by = 6;
+  bool notify = 7;
+  string message = 8;
+  // Để thông báo / email hiển thị đúng tên ngay cả khi Notification chưa có bản sao liên hệ của người dùng
+  // (tài khoản tạo trước khi Notification lưu liên hệ, hoặc event UserRegistered chưa tới).
+  string granted_by_name = 9;
+  string grantee_email = 10;
+}
+
+message RevokePermissionRequest {
+  string item_id = 1;
+  string permission_id = 2;
+  string revoked_by = 3;
+}
+
+message RevokePermissionResponse {}
+
+message ShareLink {
+  string id = 1;
+  string item_id = 2;
+  Role role = 3;
+  bool has_password = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  string created_by = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message CreateLinkRequest {
+  ItemRef item = 1;
+  Role role = 2;
+  google.protobuf.Timestamp expires_at = 3;
+  string password = 4;
+  string created_by = 5;
+}
+
+message CreateLinkResponse {
+  ShareLink link = 1;
+  // Chỉ trả về một lần (server chỉ lưu hash).
+  string token = 2;
+}
+
+message ListLinksRequest {
+  string item_id = 1;
+}
+
+message ListLinksResponse {
+  repeated ShareLink links = 1;
+}
+
+message DisableLinkRequest {
+  string item_id = 1;
+  string link_id = 2;
+}
+
+message DisableLinkResponse {}
+
+message ResolveLinkRequest {
+  string token = 1;
+  string password = 2;
+}
+
+message ResolveLinkResponse {
+  bool found = 1;
+  bool requires_password = 2;
+  string item_id = 3;
+  Role role = 4;
+}

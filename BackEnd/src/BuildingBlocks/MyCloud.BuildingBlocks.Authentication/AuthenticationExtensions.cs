@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -43,6 +44,22 @@ public static class AuthenticationExtensions
                 }
 
                 options.MapInboundClaims = false; // giữ nguyên tên claim: sub, email, name
+
+                // WebSocket của trình duyệt không gắn được header Authorization ⇒ SignalR gửi token qua query
+                // "access_token". Chỉ chấp nhận cách này cho đường dẫn hub (docs/03 §7), không cho API thường.
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        string? token = context.Request.Query["access_token"];
+                        if (!string.IsNullOrEmpty(token) && context.Request.Path.Value?.Contains("/hubs/", StringComparison.OrdinalIgnoreCase) == true)
+                        {
+                            context.Token = token;
+                        }
+
+                        return Task.CompletedTask;
+                    },
+                };
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidIssuer = jwt.Issuer,
@@ -60,7 +77,9 @@ public static class AuthenticationExtensions
             });
 
         services.AddAuthorizationBuilder()
-            .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+            .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
+            .AddPolicy(ServiceIdentity.Policy, ServiceIdentity.BuildPolicy());
+        services.TryAddSingleton(TimeProvider.System);
 
         return builder;
     }
