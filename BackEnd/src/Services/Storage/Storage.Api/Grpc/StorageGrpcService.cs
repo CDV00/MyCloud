@@ -72,6 +72,12 @@ public sealed class StorageGrpcService(UploadService uploads, ICurrentUser curre
         return new GetQuotaResponse { LimitBytes = quota.LimitBytes, UsedBytes = quota.UsedBytes, ReservedBytes = quota.ReservedBytes };
     }
 
+    public override async Task<CopyBlobResponse> CopyBlob(CopyBlobRequest request, ServerCallContext context)
+    {
+        (Guid blobId, long size) = await uploads.CopyAsync(Caller(request.UserId), ParseId(request.SourceBlobId), context.CancellationToken);
+        return new CopyBlobResponse { BlobId = blobId.ToString(), SizeBytes = size };
+    }
+
     private Guid Caller(string userId)
     {
         Guid authenticated = currentUser.GetRequiredUserId();

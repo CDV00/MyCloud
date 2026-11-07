@@ -1,10 +1,10 @@
 using Drive.Application.Abstractions;
-using Drive.Application.Uploads;
 using Drive.Domain;
 using Drive.Infrastructure.Maintenance;
 using Drive.Infrastructure.Messaging;
 using Drive.Infrastructure.Persistence;
 using Drive.Infrastructure.Storage;
+using Drive.Infrastructure.Trash;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -38,8 +38,14 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IDriveItemRepository, DriveItemRepository>();
         services.AddScoped<IPendingUploadRepository, PendingUploadRepository>();
-        services.AddScoped<IFileVersionReader, FileVersionReader>();
+        services.AddScoped<IFileVersionRepository, FileVersionRepository>();
+        services.AddScoped<IStarRepository, StarRepository>();
+        services.AddScoped<ITrashPurger, TrashPurger>();
+        services.AddScoped<IItemAccessLog, ItemAccessLog>();
+        services.AddSingleton(builder.Configuration.GetSection(DriveOptions.SectionName).Get<DriveOptions>() ?? new DriveOptions());
         services.AddHostedService<PendingUploadCleanup>();
+        services.AddSingleton<TrashRetentionJob>();
+        services.AddHostedService(sp => sp.GetRequiredService<TrashRetentionJob>());
 
         // Storage gRPC: endpoint tên "grpc" của service "storage" (HTTP/2 không TLS, chỉ trong mạng nội bộ).
         Uri storageGrpc = new(builder.Configuration["Services:Storage:Grpc"] ?? "http://_grpc.storage");

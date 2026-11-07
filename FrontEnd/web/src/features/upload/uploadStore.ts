@@ -8,7 +8,10 @@ export interface UploadTask {
   id: string;
   fileName: string;
   sizeBytes: number;
+  /** Thư mục chứa file (để làm mới danh sách khi xong). */
   parentId: string;
+  /** Có giá trị ⇒ đây là phiên bản mới của file này, không phải file mới. */
+  targetItemId?: string;
   uploadedBytes: number;
   status: UploadStatus;
   error?: unknown;
@@ -19,7 +22,7 @@ type Listener = () => void;
 type DoneListener = (task: UploadTask) => void;
 
 const browserDeps: UploadDependencies = {
-  start: (parentId, file, signal) => startUpload(parentId, file, signal),
+  start: (target, file, signal) => startUpload(target, file, signal),
   signParts,
   complete: completeUpload,
   abort: async (uploadId) => {
@@ -83,6 +86,26 @@ export class UploadStore {
     this.pump();
   }
 
+  /** Tải nội dung mới cho một file có sẵn — thành phiên bản kế tiếp, giữ nguyên tên và vị trí. */
+  addVersion(file: File, item: Pick<DriveItem, 'id' | 'name' | 'parentId'>) {
+    const id = `upload-${++this.nextId}`;
+    this.files.set(id, file);
+    this.tasks = [
+      ...this.tasks,
+      {
+        id,
+        fileName: item.name,
+        sizeBytes: file.size,
+        parentId: item.parentId ?? '',
+        targetItemId: item.id,
+        uploadedBytes: 0,
+        status: 'queued',
+      },
+    ];
+    this.emit();
+    this.pump();
+  }
+
   cancel(id: string) {
     const task = this.tasks.find((t) => t.id === id);
     if (!task || task.status === 'done' || task.status === 'canceled') return;
@@ -122,7 +145,8 @@ export class UploadStore {
     this.update(task.id, { status: 'uploading' });
 
     try {
-      const item = await uploadFile(file, task.parentId, this.deps, {
+      const target = task.targetItemId ? { targetItemId: task.targetItemId } : { parentId: task.parentId };
+      const item = await uploadFile(file, target, this.deps, {
         signal: controller.signal,
         onProgress: (uploadedBytes) => this.update(task.id, { uploadedBytes }),
       });

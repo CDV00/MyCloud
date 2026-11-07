@@ -12,7 +12,7 @@ using Storage.Api.Maintenance;
 
 namespace Storage.IntegrationTests;
 
-public sealed class StorageTests(StorageApiFactory factory) : IClassFixture<StorageApiFactory>, IDisposable
+public sealed partial class StorageTests(StorageApiFactory factory) : IClassFixture<StorageApiFactory>, IDisposable
 {
     private sealed record QuotaResponse(long LimitBytes, long UsedBytes, long ReservedBytes, long AvailableBytes);
 

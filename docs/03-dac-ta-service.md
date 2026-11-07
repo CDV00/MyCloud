@@ -175,6 +175,8 @@ Di chuyển cây con = **1 câu UPDATE** trên `path` (`SET path = :new || subst
 | GET | `/items/{id}/versions`, POST `/items/{id}/versions/{vid}:restore` | Version |
 | POST | `/archives` | `{itemIds}` → job tạo zip (Phase 5), trả về qua notification |
 
+> Đã triển khai (Phase 2–3) với đường dẫn dạng `/items/{id}/move`, `/copy`, `/trash`, `/restore`, `/download-url` (body `{inline, versionId}`), `/versions/{vid}/restore`, `DELETE /items/{id}/versions/{vid}`, `POST /uploads` nhận `targetItemId` — route ASP.NET không hỗ trợ tốt kiểu `:action`.
+
 > Vì sao `:downloadUrl` trả JSON thay vì redirect: trình duyệt không gắn được header `Authorization` khi điều hướng; frontend lấy URL rồi `window.location = url`.
 
 ### gRPC (`drive.v1.DriveQueryService`, chỉ nội bộ)

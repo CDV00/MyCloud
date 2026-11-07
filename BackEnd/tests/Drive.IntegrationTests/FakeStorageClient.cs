@@ -39,6 +39,7 @@ public sealed class FakeStorageClient : IStorageClient
             throw new UnauthorizedAccessException();
         }
 
+        _blobSizes[blobId] = size;
         return Task.FromResult(new CompletedBlob(blobId, size));
     }
 
@@ -53,6 +54,30 @@ public sealed class FakeStorageClient : IStorageClient
         Task.FromResult(new DownloadLink(
             $"{publicBaseUrl}/mycloud-blobs/{blobId:N}?name={Uri.EscapeDataString(fileName)}&inline={inline}",
             DateTimeOffset.UtcNow.AddMinutes(5)));
+
+    public ConcurrentBag<(Guid UserId, Guid SourceBlobId, Guid NewBlobId)> Copies { get; } = [];
+
+    /// <summary>Dung lượng của từng blob (từ upload hoặc bản sao) — để bản sao mang đúng kích thước nguồn.</summary>
+    private readonly ConcurrentDictionary<Guid, long> _blobSizes = new();
+
+    public long UsedBytes { get; set; }
+
+    public Task<CompletedBlob> CopyBlobAsync(Guid userId, Guid sourceBlobId, CancellationToken ct)
+    {
+        long size = _blobSizes.GetValueOrDefault(sourceBlobId);
+        if (size > QuotaBytes - UsedBytes)
+        {
+            throw new QuotaExceeded();
+        }
+
+        Guid blobId = Guid.CreateVersion7();
+        _blobSizes[blobId] = size;
+        Copies.Add((userId, sourceBlobId, blobId));
+        return Task.FromResult(new CompletedBlob(blobId, size));
+    }
+
+    public Task<StorageQuota> GetQuotaAsync(Guid userId, CancellationToken ct) =>
+        Task.FromResult(new StorageQuota(QuotaBytes, UsedBytes, 0));
 
     private sealed class QuotaExceeded() : LimitExceededException("Not enough storage space for this file.")
     {

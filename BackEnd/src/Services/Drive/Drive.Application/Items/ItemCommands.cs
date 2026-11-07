@@ -24,7 +24,7 @@ internal sealed class EnsureRootCommandHandler(IDriveItemRepository items, ICurr
             items.Add(root);
         }
 
-        return ItemDto.From(root);
+        return ItemDto.From(root, starred: false);
     }
 }
 
@@ -53,7 +53,7 @@ internal sealed class CreateFolderCommandHandler(ItemAccess access, IDriveItemRe
 
         var folder = DriveItem.CreateFolder(Guid.CreateVersion7(), parent, name);
         items.Add(folder);
-        return ItemDto.From(folder);
+        return ItemDto.From(folder, starred: false);
     }
 }
 
@@ -65,7 +65,7 @@ internal sealed class RenameItemCommandValidator : AbstractValidator<RenameItemC
     public RenameItemCommandValidator() => RuleFor(x => x.Name).NotEmpty().MaximumLength(ItemName.MaxLength);
 }
 
-internal sealed class RenameItemCommandHandler(ItemAccess access, IDriveItemRepository items)
+internal sealed class RenameItemCommandHandler(ItemAccess access, IDriveItemRepository items, ItemDtos dtos)
     : ICommandHandler<RenameItemCommand, ItemDto>
 {
     public async Task<Result<ItemDto>> Handle(RenameItemCommand request, CancellationToken cancellationToken)
@@ -78,13 +78,13 @@ internal sealed class RenameItemCommandHandler(ItemAccess access, IDriveItemRepo
         }
 
         item.Rename(name, request.ExpectedRevision);
-        return ItemDto.From(item);
+        return await dtos.ForAsync(item, cancellationToken);
     }
 }
 
 public sealed record MoveItemCommand(Guid ItemId, Guid NewParentId, long? ExpectedRevision) : ICommand<ItemDto>;
 
-internal sealed class MoveItemCommandHandler(ItemAccess access, IDriveItemRepository items)
+internal sealed class MoveItemCommandHandler(ItemAccess access, IDriveItemRepository items, ItemDtos dtos)
     : ICommandHandler<MoveItemCommand, ItemDto>
 {
     public async Task<Result<ItemDto>> Handle(MoveItemCommand request, CancellationToken cancellationToken)
@@ -103,6 +103,6 @@ internal sealed class MoveItemCommandHandler(ItemAccess access, IDriveItemReposi
             items.MoveSubtree(move);
         }
 
-        return ItemDto.From(item);
+        return await dtos.ForAsync(item, cancellationToken);
     }
 }

@@ -187,6 +187,36 @@ public sealed class S3ObjectStorage : IDisposable
     public Task DeleteAsync(string key, CancellationToken ct) =>
         _internal.DeleteObjectAsync(Bucket, key, ct);
 
+    /// <summary>Xoá nhiều object (tối đa 1000 / request). Object không tồn tại được coi là đã xoá.</summary>
+    public async Task DeleteManyAsync(IReadOnlyCollection<string> keys, CancellationToken ct)
+    {
+        foreach (string[] chunk in keys.Chunk(1000))
+        {
+            DeleteObjectsResponse response = await _internal.DeleteObjectsAsync(new DeleteObjectsRequest
+            {
+                BucketName = Bucket,
+                Objects = chunk.Select(k => new KeyVersion { Key = k }).ToList(),
+                Quiet = true,
+            }, ct);
+
+            if (response.DeleteErrors is { Count: > 0 } errors)
+            {
+                throw new InvalidOperationException(
+                    $"Object storage could not delete {errors.Count} object(s), first: {errors[0].Key} ({errors[0].Code}).");
+            }
+        }
+    }
+
+    /// <summary>Sao chép phía server (CopyObject, tối đa 5 GB — bằng giới hạn kích thước file của hệ thống).</summary>
+    public Task CopyAsync(string sourceKey, string destinationKey, CancellationToken ct) =>
+        _internal.CopyObjectAsync(new CopyObjectRequest
+        {
+            SourceBucket = Bucket,
+            SourceKey = sourceKey,
+            DestinationBucket = Bucket,
+            DestinationKey = destinationKey,
+        }, ct);
+
     public void Dispose()
     {
         _internal.Dispose();

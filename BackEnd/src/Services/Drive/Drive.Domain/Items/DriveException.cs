@@ -44,7 +44,7 @@ public static class DriveException
         public override string Code => "DRIVE.INVALID_MOVE";
     }
 
-    public sealed class RootImmutable() : BadRequestException("The root folder cannot be renamed or moved.")
+    public sealed class RootImmutable() : BadRequestException("This operation is not allowed on the root folder.")
     {
         public override string Code => "DRIVE.ROOT_IMMUTABLE";
     }
@@ -64,5 +64,47 @@ public static class DriveException
         : PreconditionFailedException("The item was changed by someone else. Reload and try again.")
     {
         public override string Code => "DRIVE.REVISION_MISMATCH";
+    }
+
+    /// <summary>Sửa / thêm vào item đang ở thùng rác — phải khôi phục trước.</summary>
+    public sealed class ItemTrashed(Guid itemId) : ConflictException($"Item '{itemId}' is in the trash. Restore it first.")
+    {
+        public override string Code => "DRIVE.ITEM_TRASHED";
+    }
+
+    public sealed class NotInTrash(Guid itemId) : ConflictException($"Item '{itemId}' is not in the trash.")
+    {
+        public override string Code => "DRIVE.NOT_IN_TRASH";
+    }
+
+    /// <summary>Item nằm trong một thư mục đã bị xoá: khôi phục thư mục đó (cả nhóm), không tách lẻ.</summary>
+    public sealed class RestoreContainingFolder(Guid itemId, Guid trashRootId)
+        : ConflictException($"Item '{itemId}' was deleted together with folder '{trashRootId}'. Restore that folder instead.")
+    {
+        public override string Code => "DRIVE.RESTORE_CONTAINING_FOLDER";
+    }
+
+    public sealed class VersionNotFound(Guid versionId) : NotFoundException($"Version '{versionId}' was not found.")
+    {
+        public override string Code => "DRIVE.VERSION_NOT_FOUND";
+    }
+
+    public sealed class CannotDeleteCurrentVersion(Guid itemId)
+        : ConflictException($"The current version of item '{itemId}' cannot be deleted.")
+    {
+        public override string Code => "DRIVE.CANNOT_DELETE_CURRENT_VERSION";
+    }
+
+    /// <summary>Sao chép thư mục quá lớn để làm trong một yêu cầu (job nền cần định danh service — Phase 4/5).</summary>
+    public sealed class CopyTooLarge(int maxItems)
+        : LimitExceededException($"A folder with more than {maxItems} items cannot be copied at once.")
+    {
+        public override string Code => "DRIVE.COPY_TOO_LARGE";
+    }
+
+    /// <summary>Kiểm tra trước khi sao chép: tổng dung lượng các file vượt dung lượng còn trống.</summary>
+    public sealed class QuotaExceeded() : LimitExceededException("Not enough storage space to copy these files.")
+    {
+        public override string Code => "STORAGE.QUOTA_EXCEEDED";
     }
 }

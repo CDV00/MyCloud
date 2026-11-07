@@ -87,7 +87,7 @@ message GetDownloadUrlRequest {
   int32 ttl_seconds = 5;                 // mặc định 300
 }
 message GetDownloadUrlResponse { string url = 1; google.protobuf.Timestamp expires_at = 2; }
-message CopyBlobRequest { string source_blob_id = 1; string target_user_id = 2; }
+message CopyBlobRequest { string user_id = 1; string source_blob_id = 2; }  // Phase 3: chỉ chủ sở hữu blob
 message CopyBlobResponse { string blob_id = 1; int64 size_bytes = 2; }
 message GetQuotaRequest { string user_id = 1; }
 message Quota { int64 limit_bytes = 1; int64 used_bytes = 2; int64 reserved_bytes = 3; }
@@ -193,11 +193,12 @@ public abstract record IntegrationEvent
 | `ItemCreated` | Drive | ItemId, OwnerId, ParentId, AncestorIds, Kind, Name, MimeType, SizeBytes, Revision, CreatedBy | Sharing (tuple parent/owner), Search |
 | `ItemRenamed` | Drive | ItemId, NewName, Revision, By | Search |
 | `ItemMoved` | Drive | ItemId, OldParentId, NewParentId, NewAncestorIds, Revision, By | Sharing, Search |
-| `ItemTrashed` | Drive | ItemId (gốc), AffectedItemIds, By, Revision | Search |
-| `ItemRestored` | Drive | ItemId, AffectedItemIds, NewParentId, Revision | Search |
-| `ItemsPurged` | Drive | ItemIds, BlobIds, OwnerId | Storage (xoá blob, trả quota), Sharing (xoá tuple + quyền), Search |
+| `ItemTrashed` | Drive | ItemId (gốc của nhóm), OwnerId, By, Revision — con cháu suy ra qua `ancestorIds` | Search |
+| `ItemRestored` | Drive | ItemId, OwnerId, ParentId, AncestorIds, Name (có thể đã đổi để không trùng), Revision, By | Search |
+| `ItemsPurged` | Drive | ItemIds, BlobIds (mọi version), OwnerId — tối đa 500 item / event | Storage (xoá blob, trả quota), Sharing (xoá tuple + quyền), Search |
+| `FileVersionsDeleted` | Drive | ItemId, OwnerId, VersionIds, BlobIds, Revision | Storage (xoá blob, trả quota) |
 | `FileVersionAdded` | Drive | ItemId, VersionId, VersionNo, BlobId, SizeBytes, MimeType, By | Storage (claim blob), Media (thumbnail), Search |
-| `ItemAccessed` | Drive | ItemId, UserId, Action (open/download) | Search (Gần đây) |
+| `ItemAccessed` | Drive | ItemId, OwnerId, UserId, Action (open/download) — gộp 5 phút | Search (Gần đây) |
 | `ItemShared` | Sharing | ItemId, GranteeUserId, Role, SharedBy, Message | Search (access_grants), Notification |
 | `ShareRevoked` | Sharing | ItemId, GranteeUserId | Search |
 | `QuotaThresholdReached` | Storage | UserId, Percent | Notification |

@@ -9,8 +9,8 @@ export function folderPath(item: Pick<DriveItem, 'id' | 'isRoot'>) {
  * Tải file: lấy presigned URL (trình duyệt không gắn được header Authorization khi điều hướng) rồi mở nó.
  * Object storage trả Content-Disposition: attachment kèm tên file gốc nên trình duyệt tải về, không rời trang.
  */
-export async function downloadItem(itemId: string): Promise<void> {
-  const { url } = await getDownloadUrl(itemId);
+export async function downloadItem(itemId: string, versionId?: string): Promise<void> {
+  const { url } = await getDownloadUrl(itemId, { versionId });
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.rel = 'noopener';

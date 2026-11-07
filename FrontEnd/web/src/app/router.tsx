@@ -1,6 +1,10 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { ProtectedRoute, PublicOnlyRoute } from '../auth/routes';
 import DrivePage from '../features/drive/DrivePage';
+import StarredPage from '../features/drive/StarredPage';
+import RecentPage from '../features/search/RecentPage';
+import SearchPage from '../features/search/SearchPage';
+import TrashPage from '../features/trash/TrashPage';
 import { AppLayout } from '../layout/AppLayout';
 import AccountPage from '../pages/AccountPage';
 import LoginPage from '../pages/auth/LoginPage';
@@ -31,9 +35,10 @@ export const routes: RouteObject[] = [
               { path: '/my-drive', element: <DrivePage /> },
               { path: '/my-drive/folders/:folderId', element: <DrivePage /> },
               { path: '/shared', element: <ComingSoonPage title="Được chia sẻ với tôi" phase={4} /> },
-              { path: '/recent', element: <ComingSoonPage title="Gần đây" phase={3} /> },
-              { path: '/starred', element: <ComingSoonPage title="Có gắn dấu sao" phase={3} /> },
-              { path: '/trash', element: <ComingSoonPage title="Thùng rác" phase={3} /> },
+              { path: '/recent', element: <RecentPage /> },
+              { path: '/starred', element: <StarredPage /> },
+              { path: '/trash', element: <TrashPage /> },
+              { path: '/search', element: <SearchPage /> },
               { path: '/storage', element: <StoragePage /> },
               { path: '/account', element: <AccountPage /> },
               { path: '*', element: <ErrorPage /> },

@@ -8,7 +8,8 @@ using MyCloud.BuildingBlocks.Web;
 
 namespace Drive.Api.Endpoints;
 
-public sealed record StartUploadRequest(Guid ParentId, string Name, long SizeBytes, string? MimeType);
+/// <param name="TargetItemId">Có giá trị ⇒ upload phiên bản mới cho file này (bỏ qua ParentId/Name).</param>
+public sealed record StartUploadRequest(Guid? ParentId, string? Name, long SizeBytes, string? MimeType, Guid? TargetItemId = null);
 
 public sealed record CompleteUploadRequest(CompletedPart[] Parts);
 
@@ -30,7 +31,8 @@ public sealed class UploadEndpoints : ICarterModule
     private static async Task<IResult> StartAsync(StartUploadRequest request, HttpRequest http, ISender sender, CancellationToken ct)
     {
         Result<UploadDto> result = await sender.Send(
-            new StartUploadCommand(request.ParentId, request.Name, request.SizeBytes, request.MimeType, http.GetPublicBaseUrl()), ct);
+            new StartUploadCommand(
+                request.ParentId, request.Name, request.SizeBytes, request.MimeType, http.GetPublicBaseUrl(), request.TargetItemId), ct);
         return result.IsSuccess
             ? Results.Created($"/api/v1/uploads/{result.Value.UploadId}", result.Value)
             : result.ToProblem();

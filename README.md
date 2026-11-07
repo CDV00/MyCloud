@@ -3,7 +3,7 @@
 Ứng dụng lưu trữ đám mây kiểu Google Drive — backend microservice .NET 10 (gRPC + RabbitMQ), frontend React + TypeScript.
 
 - **Kiến trúc, đặc tả, kế hoạch**: [docs/](docs/README.md)
-- **Trạng thái**: Phase 2 xong → **MVP**: cây thư mục, upload file lớn trực tiếp lên object storage (multipart, tự tiếp tục khi mất mạng), tải về, dung lượng, dữ liệu cách ly theo user. Tiếp theo Phase 3 (thùng rác, version, gắn sao, tìm kiếm). Xem [kế hoạch](docs/07-ke-hoach-thuc-hien.md).
+- **Trạng thái**: Phase 3 xong — MVP (cây thư mục, upload multipart trực tiếp lên object storage, tải về, dung lượng) + thùng rác, phiên bản, sao chép, gắn sao, tìm kiếm không dấu, "Gần đây", nhật ký hoạt động. Tiếp theo Phase 4 (chia sẻ, thông báo). Xem [kế hoạch](docs/07-ke-hoach-thuc-hien.md).
 
 ## Cấu trúc
 

@@ -43,3 +43,40 @@ public sealed record FileVersionAdded(
     string MimeType,
     long Revision,
     Guid By) : IntegrationEvent;
+
+/// <summary>
+/// Item (và cả cây con nếu là thư mục) vào thùng rác. Chỉ mang item gốc của nhóm: consumer suy ra các item con bị ẩn
+/// qua <c>AncestorIds</c> nên không phải gửi danh sách hàng nghìn id, và chỉ một document cần kiểm tra Revision.
+/// </summary>
+public sealed record ItemTrashed(Guid ItemId, Guid OwnerId, long Revision, Guid By) : IntegrationEvent;
+
+/// <summary>
+/// Khôi phục cả nhóm đã xoá cùng lúc. <c>ParentId</c>/<c>AncestorIds</c> có thể khác trước (thư mục cha đã nằm trong
+/// thùng rác ⇒ khôi phục về "Drive của tôi"), tên có thể đã được đổi để không trùng.
+/// </summary>
+public sealed record ItemRestored(
+    Guid ItemId,
+    Guid OwnerId,
+    Guid ParentId,
+    IReadOnlyList<Guid> AncestorIds,
+    string Name,
+    long Revision,
+    Guid By) : IntegrationEvent;
+
+/// <summary>Đã xoá vĩnh viễn (theo lô tối đa 500 item). Storage xoá object + trả quota; Search xoá index.</summary>
+public sealed record ItemsPurged(Guid OwnerId, IReadOnlyList<Guid> ItemIds, IReadOnlyList<Guid> BlobIds) : IntegrationEvent;
+
+/// <summary>Version cũ bị xoá (giới hạn số version giữ lại, hoặc người dùng xoá) — Storage xoá blob, trả quota.</summary>
+public sealed record FileVersionsDeleted(
+    Guid ItemId,
+    Guid OwnerId,
+    IReadOnlyList<Guid> VersionIds,
+    IReadOnlyList<Guid> BlobIds,
+    long Revision) : IntegrationEvent;
+
+/// <summary>Người dùng mở / tải file — cho trang "Gần đây". Drive gộp tối đa 1 event / người / item / 5 phút.</summary>
+public sealed record ItemAccessed(Guid ItemId, Guid OwnerId, Guid UserId, string Action) : IntegrationEvent
+{
+    public const string Open = "open";
+    public const string Download = "download";
+}
