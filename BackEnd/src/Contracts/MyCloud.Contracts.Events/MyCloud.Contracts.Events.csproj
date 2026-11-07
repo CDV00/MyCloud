@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Hợp đồng integration event giữa các service.
+    QUY TẮC: không tham chiếu bất kỳ package/project nào; chỉ thêm field (không đổi/xoá);
+    thay đổi phá vỡ → tạo event mới (ví dụ ItemMovedV2). Xem docs/04 §3.
+  -->
+</Project>

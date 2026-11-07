@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Services\Drive\Drive.Domain\Drive.Domain.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package mycloud.common.v1;
+
+option csharp_namespace = "MyCloud.Contracts.Common.V1";
+
+// Phân trang dạng cursor dùng chung cho các RPC liệt kê.
+message PageRequest {
+  // Số phần tử tối đa (1..200). 0 = mặc định của service.
+  int32 page_size = 1;
+  // Token lấy từ PageResponse.next_page_token của lần gọi trước; rỗng = trang đầu.
+  string page_token = 2;
+}
+
+message PageResponse {
+  // Rỗng khi không còn trang tiếp theo.
+  string next_page_token = 1;
+}

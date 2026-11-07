@@ -1,0 +1,84 @@
+name: backend-ci
+
+on:
+  pull_request:
+    paths:
+      - "BackEnd/**"
+      - ".github/workflows/backend-ci.yml"
+  push:
+    branches: [master]
+    paths:
+      - "BackEnd/**"
+      - ".github/workflows/backend-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: BackEnd
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: BackEnd/global.json
+
+      - name: Restore
+        run: dotnet restore MyCloud.slnx
+
+      - name: Build (warnings = errors)
+        run: dotnet build MyCloud.slnx --no-restore -c Release
+
+      - name: Format check
+        run: dotnet format MyCloud.slnx --no-restore --verify-no-changes --severity error
+
+      - name: Vulnerable packages
+        run: |
+          dotnet list MyCloud.slnx package --vulnerable --include-transitive | tee vulnerable.txt
+          if grep -q "has the following vulnerable packages" vulnerable.txt; then exit 1; fi
+
+      # Integration test dùng Testcontainers → cần Docker (có sẵn trên ubuntu-latest).
+      - name: Test
+        run: dotnet test MyCloud.slnx --no-build -c Release --logger "trx" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: BackEnd/TestResults
+
+  proto-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: bufbuild/buf-action@v1
+        with:
+          input: BackEnd/src/Contracts/Protos
+          lint: true
+          format: false
+          breaking: ${{ github.event_name == 'pull_request' }}
+          breaking_against: ${{ github.event.repository.clone_url }}#branch=${{ github.base_ref }},subdir=BackEnd/src/Contracts/Protos
+          push: false
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

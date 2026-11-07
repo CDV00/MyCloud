@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Không phụ thuộc framework nào: chỉ khối xây dựng DDD thuần. -->
+</Project>

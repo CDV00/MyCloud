@@ -1,0 +1,50 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Aspire/">
+    <Project Path="src/Aspire/MyCloud.AppHost/MyCloud.AppHost.csproj" />
+    <Project Path="src/Aspire/MyCloud.ServiceDefaults/MyCloud.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/MyCloud.BuildingBlocks.Application/MyCloud.BuildingBlocks.Application.csproj" />
+    <Project Path="src/BuildingBlocks/MyCloud.BuildingBlocks.Domain/MyCloud.BuildingBlocks.Domain.csproj" />
+    <Project Path="src/BuildingBlocks/MyCloud.BuildingBlocks.Grpc/MyCloud.BuildingBlocks.Grpc.csproj" />
+    <Project Path="src/BuildingBlocks/MyCloud.BuildingBlocks.Messaging/MyCloud.BuildingBlocks.Messaging.csproj" />
+    <Project Path="src/BuildingBlocks/MyCloud.BuildingBlocks.Web/MyCloud.BuildingBlocks.Web.csproj" />
+  </Folder>
+  <Folder Name="/src/Contracts/">
+    <Project Path="src/Contracts/MyCloud.Contracts.Events/MyCloud.Contracts.Events.csproj" />
+  </Folder>
+  <Folder Name="/src/Gateway/">
+    <Project Path="src/Gateway/MyCloud.Gateway/MyCloud.Gateway.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/" />
+  <Folder Name="/src/Services/Drive/">
+    <Project Path="src/Services/Drive/Drive.Api/Drive.Api.csproj" />
+    <Project Path="src/Services/Drive/Drive.Application/Drive.Application.csproj" />
+    <Project Path="src/Services/Drive/Drive.Domain/Drive.Domain.csproj" />
+    <Project Path="src/Services/Drive/Drive.Infrastructure/Drive.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Identity/">
+    <Project Path="src/Services/Identity/Identity.Api/Identity.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Media/">
+    <Project Path="src/Services/Media/Media.Worker/Media.Worker.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Notification/">
+    <Project Path="src/Services/Notification/Notification.Api/Notification.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Search/">
+    <Project Path="src/Services/Search/Search.Api/Search.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Sharing/">
+    <Project Path="src/Services/Sharing/Sharing.Api/Sharing.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Storage/">
+    <Project Path="src/Services/Storage/Storage.Api/Storage.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Architecture.Tests/Architecture.Tests.csproj" />
+    <Project Path="tests/Drive.Domain.Tests/Drive.Domain.Tests.csproj" />
+    <Project Path="tests/Drive.IntegrationTests/Drive.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

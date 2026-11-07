@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <UserSecretsId>mycloud-drive-api</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Aspire\MyCloud.ServiceDefaults\MyCloud.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Web\MyCloud.BuildingBlocks.Web.csproj" />
+    <ProjectReference Include="..\Drive.Infrastructure\Drive.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

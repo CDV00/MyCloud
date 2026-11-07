@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="Grpc.Net.ClientFactory" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MyCloud.BuildingBlocks.Domain\MyCloud.BuildingBlocks.Domain.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,12 @@
+# Hợp đồng gRPC giữa các service. Service link trực tiếp file .proto vào project
+# (<Protobuf Include="..." GrpcServices="Server|Client" />) — không chia sẻ code sinh ra.
+# CI: `buf lint` và `buf breaking --against '.git#branch=master,subdir=BackEnd/src/Contracts/Protos'`.
+version: v2
+modules:
+  - path: .
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE
