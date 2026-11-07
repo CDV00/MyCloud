@@ -15,6 +15,21 @@ export interface DriveItem {
   revision: number;
   createdAt: string;
   modifiedAt: string;
+  starred: boolean;
+  /** Có giá trị ⇒ item đang ở thùng rác. */
+  trashedAt: string | null;
+  /** Số version hiện tại (file); 0 với thư mục. */
+  versionNo: number;
+}
+
+export interface FileVersion {
+  id: string;
+  versionNo: number;
+  sizeBytes: number;
+  mimeType: string;
+  createdAt: string;
+  createdBy: string;
+  isCurrent: boolean;
 }
 
 export interface ItemPage {
@@ -75,16 +90,19 @@ export const moveItem = (item: DriveItem, newParentId: string) =>
     headers: { 'If-Match': `"${item.revision}"` },
   });
 
-export const getDownloadUrl = (id: string, inline = false) =>
+export const getDownloadUrl = (id: string, options: { inline?: boolean; versionId?: string } = {}) =>
   apiFetch<{ url: string; expiresAt: string }>(`${DRIVE}/items/${id}/download-url`, {
     method: 'POST',
-    json: { inline },
+    json: { inline: options.inline ?? false, versionId: options.versionId ?? null },
   });
 
-export const startUpload = (parentId: string, file: File, signal?: AbortSignal) =>
+/** Nơi file tải lên sẽ vào: thư mục (file mới) hoặc file có sẵn (phiên bản mới). */
+export type UploadTarget = { parentId: string } | { targetItemId: string };
+
+export const startUpload = (target: UploadTarget, file: File, signal?: AbortSignal) =>
   apiFetch<UploadSession>(`${DRIVE}/uploads`, {
     method: 'POST',
-    json: { parentId, name: file.name, sizeBytes: file.size, mimeType: file.type || null },
+    json: { ...target, name: file.name, sizeBytes: file.size, mimeType: file.type || null },
     signal,
   });
 
@@ -93,3 +111,40 @@ export const completeUpload = (uploadId: string, parts: { partNumber: number; eT
 
 export const abortUpload = (uploadId: string) =>
   apiFetch(`${DRIVE}/uploads/${uploadId}`, { method: 'DELETE' });
+
+// --- Thùng rác (docs/05 §6) ---
+
+export const trashItem = (id: string) =>
+  apiFetch<DriveItem>(`${DRIVE}/items/${id}/trash`, { method: 'POST' });
+
+export const restoreItem = (id: string) =>
+  apiFetch<DriveItem>(`${DRIVE}/items/${id}/restore`, { method: 'POST' });
+
+/** Xoá vĩnh viễn (chỉ item đang ở thùng rác). */
+export const purgeItem = (id: string) => apiFetch(`${DRIVE}/items/${id}`, { method: 'DELETE' });
+
+export const listTrash = (pageToken?: string | null) =>
+  apiFetch<ItemPage>(`${DRIVE}/trash${pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : ''}`);
+
+export const emptyTrash = () => apiFetch<{ purged: number }>(`${DRIVE}/trash`, { method: 'DELETE' });
+
+// --- Gắn sao, sao chép ---
+
+export const setStar = (id: string, starred: boolean) =>
+  apiFetch(`${DRIVE}/items/${id}/star`, { method: starred ? 'PUT' : 'DELETE' });
+
+export const listStarred = (pageToken?: string | null) =>
+  apiFetch<ItemPage>(`${DRIVE}/starred${pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : ''}`);
+
+export const copyItem = (id: string, options: { targetParentId?: string; name?: string } = {}) =>
+  apiFetch<DriveItem>(`${DRIVE}/items/${id}/copy`, { method: 'POST', json: options });
+
+// --- Version ---
+
+export const listVersions = (id: string) => apiFetch<FileVersion[]>(`${DRIVE}/items/${id}/versions`);
+
+export const restoreVersion = (id: string, versionId: string) =>
+  apiFetch<DriveItem>(`${DRIVE}/items/${id}/versions/${versionId}/restore`, { method: 'POST' });
+
+export const deleteVersion = (id: string, versionId: string) =>
+  apiFetch(`${DRIVE}/items/${id}/versions/${versionId}`, { method: 'DELETE' });

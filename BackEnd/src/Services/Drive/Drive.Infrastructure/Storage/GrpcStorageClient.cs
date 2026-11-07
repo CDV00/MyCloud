@@ -71,6 +71,23 @@ internal sealed class GrpcStorageClient(StorageService.StorageServiceClient clie
         return new DownloadLink(r.Url, r.ExpiresAt.ToDateTimeOffset());
     }
 
+    public async Task<CompletedBlob> CopyBlobAsync(Guid userId, Guid sourceBlobId, CancellationToken ct)
+    {
+        // Sao chép phía server: object lớn (tới 5 GB) có thể mất vài giây.
+        CopyBlobResponse r = await CallAsync(() => client.CopyBlobAsync(
+            new CopyBlobRequest { UserId = userId.ToString(), SourceBlobId = sourceBlobId.ToString() },
+            deadline: DateTime.UtcNow + CompleteDeadline,
+            cancellationToken: ct).ResponseAsync);
+        return new CompletedBlob(Guid.Parse(r.BlobId), r.SizeBytes);
+    }
+
+    public async Task<StorageQuota> GetQuotaAsync(Guid userId, CancellationToken ct)
+    {
+        GetQuotaResponse r = await CallAsync(() => client.GetQuotaAsync(
+            new GetQuotaRequest { UserId = userId.ToString() }, cancellationToken: ct).ResponseAsync);
+        return new StorageQuota(r.LimitBytes, r.UsedBytes, r.ReservedBytes);
+    }
+
     private static async Task<T> CallAsync<T>(Func<Task<T>> call)
     {
         try

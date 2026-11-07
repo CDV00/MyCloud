@@ -30,6 +30,7 @@ import {
 import { useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useMatch } from 'react-router';
 import { NewFolderDialog } from '../features/drive/NewFolderDialog';
+import { SearchBox } from '../features/search/SearchBox';
 import { QuotaBar } from '../features/drive/QuotaBar';
 import { useRoot } from '../features/drive/queries';
 import { UploadPanel } from '../features/upload/UploadPanel';
@@ -45,7 +46,7 @@ interface NavItem {
   end?: boolean;
 }
 
-// Các mục chưa có chức năng dẫn tới trang giới thiệu phase sẽ làm (docs/07).
+// Mục chưa có chức năng dẫn tới trang giới thiệu phase sẽ làm (docs/07).
 const navItems: NavItem[] = [
   { to: '/', label: 'Trang chủ', icon: <HomeOutlinedIcon />, end: true },
   { to: '/my-drive', label: 'Drive của tôi', icon: <CloudQueueIcon /> },
@@ -119,9 +120,15 @@ export function AppLayout() {
             </IconButton>
           )}
           <CloudIcon color="primary" sx={{ mr: 1 }} />
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{ width: { md: DRAWER_WIDTH - 48 }, mr: 2, display: { xs: 'none', sm: 'block' } }}
+          >
             MyCloud
           </Typography>
+          <SearchBox />
+          <Box sx={{ flexGrow: 1, minWidth: 8 }} />
           <UserMenu />
         </Toolbar>
       </AppBar>

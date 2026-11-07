@@ -27,6 +27,9 @@ public sealed class PendingUpload : Entity<Guid>
 
     public DateTimeOffset ExpiresAt { get; private set; }
 
+    /// <summary>Upload phiên bản mới cho file này thay vì tạo file mới (docs/03 §3 <c>targetItemId</c>).</summary>
+    public Guid? TargetItemId { get; private set; }
+
     public Guid? CompletedItemId { get; private set; }
 
     public static PendingUpload Start(
@@ -35,6 +38,11 @@ public sealed class PendingUpload : Entity<Guid>
         if (!parent.IsFolder)
         {
             throw new DriveException.NotAFolder(parent.Id);
+        }
+
+        if (parent.IsTrashed)
+        {
+            throw new DriveException.ItemTrashed(parent.Id);
         }
 
         return new PendingUpload
@@ -47,6 +55,34 @@ public sealed class PendingUpload : Entity<Guid>
             MimeType = mimeType,
             CreatedAt = now,
             ExpiresAt = expiresAt,
+        };
+    }
+
+    /// <summary>Upload nội dung mới cho <paramref name="file"/>; khi hoàn tất thành version kế tiếp của nó.</summary>
+    public static PendingUpload StartNewVersion(
+        Guid sessionId, Guid ownerId, DriveItem file, long sizeBytes, string mimeType, DateTimeOffset now, DateTimeOffset expiresAt)
+    {
+        if (file.IsFolder)
+        {
+            throw new DriveException.NotAFile(file.Id);
+        }
+
+        if (file.IsTrashed)
+        {
+            throw new DriveException.ItemTrashed(file.Id);
+        }
+
+        return new PendingUpload
+        {
+            Id = sessionId,
+            OwnerId = ownerId,
+            ParentId = file.ParentId!.Value,
+            Name = file.Name,
+            SizeBytes = sizeBytes,
+            MimeType = mimeType,
+            CreatedAt = now,
+            ExpiresAt = expiresAt,
+            TargetItemId = file.Id,
         };
     }
 

@@ -196,6 +196,74 @@ public sealed partial class UploadService(
         return new DownloadUrl(url, expiresAt);
     }
 
+    /// <summary>
+    /// Sao chép blob phía server cho <paramref name="userId"/> (sao chép file, khôi phục version). Giữ chỗ quota trước,
+    /// copy, rồi ghi nhận như một upload đã xong (Uploaded) — Drive claim bằng FileVersionAdded, không claim ⇒ GC.
+    /// </summary>
+    public async Task<(Guid BlobId, long SizeBytes)> CopyAsync(Guid userId, Guid sourceBlobId, CancellationToken ct)
+    {
+        Blob source = await FindOwnedAsync(userId, sourceBlobId, ct) ?? throw new BlobNotFoundException(sourceBlobId);
+        if (source.Status is not (BlobStatus.Uploaded or BlobStatus.Claimed))
+        {
+            throw new BlobNotFoundException(sourceBlobId);
+        }
+
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        long size = source.SizeBytes ?? source.ExpectedSizeBytes;
+        Guid blobId = Guid.CreateVersion7();
+        var blob = new Blob
+        {
+            Id = blobId,
+            OwnerId = userId,
+            Bucket = s3.Bucket,
+            ObjectKey = Blob.KeyFor(userId, blobId),
+            MimeType = source.MimeType,
+            ExpectedSizeBytes = size,
+            Status = BlobStatus.Pending,
+            CreatedAt = now,
+            ExpiresAt = now + _options.UploadSessionTtl,
+        };
+
+        await InTransactionAsync(async () =>
+        {
+            await quotas.EnsureAsync(db, userId, ct);
+            if (!await quotas.TryReserveAsync(db, userId, size, ct))
+            {
+                throw new QuotaExceededException();
+            }
+
+            db.Blobs.Add(blob);
+            await db.SaveChangesAsync(ct);
+        }, ct);
+
+        try
+        {
+            await s3.CopyAsync(source.ObjectKey, blob.ObjectKey, ct);
+        }
+        catch (Exception ex)
+        {
+            if (ex is not OperationCanceledException)
+            {
+                LogCopyFailed(ex, sourceBlobId);
+            }
+
+            await s3.DeleteAsync(blob.ObjectKey, CancellationToken.None); // copy dở / đã xong nhưng phía gọi huỷ
+            await AbortPendingAsync(blob, CancellationToken.None);
+            throw;
+        }
+
+        await InTransactionAsync(async () =>
+        {
+            blob.Status = BlobStatus.Uploaded;
+            blob.SizeBytes = size;
+            blob.UploadedAt = timeProvider.GetUtcNow();
+            await db.SaveChangesAsync(ct);
+            await quotas.CommitAsync(db, userId, size, size, ct);
+        }, ct);
+
+        return (blob.Id, size);
+    }
+
     public async Task<QuotaInfo> GetQuotaAsync(Guid userId, CancellationToken ct)
     {
         await quotas.EnsureAsync(db, userId, ct);
@@ -239,6 +307,9 @@ public sealed partial class UploadService(
             await work();
             await transaction.CommitAsync(ct);
         });
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Copying blob {BlobId} failed")]
+    private partial void LogCopyFailed(Exception exception, Guid blobId);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Starting multipart upload for blob {BlobId} failed")]
     private partial void LogInitiateFailed(Exception exception, Guid blobId);

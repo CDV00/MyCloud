@@ -1,4 +1,5 @@
 using Drive.Domain.Items;
+using Drive.Domain.Stars;
 using Drive.Domain.Uploads;
 using Microsoft.EntityFrameworkCore;
 using MyCloud.BuildingBlocks.Messaging;
@@ -14,6 +15,10 @@ public sealed class DriveDbContext(DbContextOptions<DriveDbContext> options) : D
     public DbSet<FileVersion> FileVersions => Set<FileVersion>();
 
     public DbSet<PendingUpload> PendingUploads => Set<PendingUpload>();
+
+    public DbSet<Star> Stars => Set<Star>();
+
+    internal DbSet<ItemAccessRecord> AccessLog => Set<ItemAccessRecord>();
 
     /// <summary>Câu SQL hàng loạt (vd cập nhật path cả cây con) chạy ngay sau SaveChanges, cùng transaction.</summary>
     internal void ExecuteAfterSave(FormattableString sql) => _afterSave.Add(sql);

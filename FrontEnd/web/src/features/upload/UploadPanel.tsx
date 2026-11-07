@@ -35,6 +35,10 @@ export function UploadPanel() {
       uploadStore.onDone((task) => {
         invalidateFolders(queryClient, task.parentId);
         void queryClient.invalidateQueries({ queryKey: driveKeys.quota });
+        if (task.targetItemId) {
+          void queryClient.invalidateQueries({ queryKey: driveKeys.item(task.targetItemId) });
+          void queryClient.invalidateQueries({ queryKey: driveKeys.versions(task.targetItemId) });
+        }
       }),
     [queryClient],
   );

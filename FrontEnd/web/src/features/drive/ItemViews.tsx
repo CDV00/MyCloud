@@ -1,4 +1,5 @@
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import StarIcon from '@mui/icons-material/Star';
 import {
   Box,
   Card,
@@ -24,6 +25,16 @@ export interface ItemViewProps {
   onToggleAll(): void;
   onOpen(item: DriveItem): void;
   onMenu(item: DriveItem, anchor: HTMLElement | { top: number; left: number }): void;
+  /** Cột ngày: mặc định "Sửa đổi lần cuối"; thùng rác dùng "Ngày xoá", Gần đây dùng "Lần mở gần nhất". */
+  dateColumn?: { label: string; value(item: DriveItem): string | null };
+}
+
+const modifiedColumn = { label: 'Sửa đổi lần cuối', value: (item: DriveItem) => item.modifiedAt };
+
+function StarMark({ item }: { item: DriveItem }) {
+  return item.starred ? (
+    <StarIcon sx={{ fontSize: 16, color: 'text.secondary', flexShrink: 0 }} aria-label="Có gắn dấu sao" />
+  ) : null;
 }
 
 function contextMenu(props: ItemViewProps, item: DriveItem) {
@@ -37,6 +48,7 @@ function contextMenu(props: ItemViewProps, item: DriveItem) {
 /** Dạng danh sách: tên, sửa đổi lần cuối, kích thước. Nhấp đúp để mở thư mục / tải file. */
 export function ItemTable(props: ItemViewProps) {
   const { items, selected } = props;
+  const dateColumn = props.dateColumn ?? modifiedColumn;
   const allSelected = items.length > 0 && items.every((i) => selected.has(i.id));
 
   return (
@@ -54,7 +66,7 @@ export function ItemTable(props: ItemViewProps) {
           </TableCell>
           <TableCell>Tên</TableCell>
           <TableCell sx={{ width: 160, display: { xs: 'none', sm: 'table-cell' } }}>
-            Sửa đổi lần cuối
+            {dateColumn.label}
           </TableCell>
           <TableCell sx={{ width: 120, display: { xs: 'none', md: 'table-cell' } }}>Kích thước</TableCell>
           <TableCell padding="checkbox" />
@@ -87,10 +99,14 @@ export function ItemTable(props: ItemViewProps) {
                   <Typography noWrap title={item.name} variant="body2">
                     {item.name}
                   </Typography>
+                  <StarMark item={item} />
                 </Box>
               </TableCell>
               <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' }, color: 'text.secondary' }}>
-                {formatModified(item.modifiedAt)}
+                {(() => {
+                  const value = dateColumn.value(item);
+                  return value ? formatModified(value) : '—';
+                })()}
               </TableCell>
               <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, color: 'text.secondary' }}>
                 {item.kind === 'file' ? formatSize(item.sizeBytes) : '—'}
@@ -141,6 +157,7 @@ export function ItemGrid(props: ItemViewProps) {
             <Typography noWrap variant="body2" sx={{ fontWeight: 500 }} title={item.name}>
               {item.name}
             </Typography>
+            <StarMark item={item} />
           </Box>
           {big && (
             <Box

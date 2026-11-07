@@ -20,6 +20,9 @@ service StorageService {
   // Presigned GET kèm Content-Disposition.
   rpc GetDownloadUrl(GetDownloadUrlRequest) returns (GetDownloadUrlResponse);
   rpc GetQuota(GetQuotaRequest) returns (GetQuotaResponse);
+  // Sao chép phía server (sao chép file, khôi phục version cũ thành version mới). Blob mới ở trạng thái Uploaded,
+  // tính quota của người gọi; Drive "claim" bằng FileVersionAdded như upload thường, không claim ⇒ GC sau 24 h.
+  rpc CopyBlob(CopyBlobRequest) returns (CopyBlobResponse);
 }
 
 message PresignedPart {
@@ -104,4 +107,14 @@ message GetQuotaResponse {
   int64 limit_bytes = 1;
   int64 used_bytes = 2;
   int64 reserved_bytes = 3;
+}
+
+message CopyBlobRequest {
+  string user_id = 1;
+  string source_blob_id = 2;
+}
+
+message CopyBlobResponse {
+  string blob_id = 1;
+  int64 size_bytes = 2;
 }

@@ -52,6 +52,10 @@ namespace Drive.Infrastructure.Persistence.Migrations
                         .HasColumnType("smallint")
                         .HasColumnName("kind");
 
+                    b.Property<int>("LastVersionNo")
+                        .HasColumnType("integer")
+                        .HasColumnName("last_version_no");
+
                     b.Property<string>("MimeType")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
@@ -99,6 +103,18 @@ namespace Drive.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("size_bytes");
 
+                    b.Property<Guid?>("TrashRootId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("trash_root_id");
+
+                    b.Property<DateTimeOffset?>("TrashedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("trashed_at");
+
+                    b.Property<Guid?>("TrashedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("trashed_by");
+
                     b.HasKey("Id")
                         .HasName("pk_items");
 
@@ -112,9 +128,18 @@ namespace Drive.Infrastructure.Persistence.Migrations
 
                     NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Path"), new[] { "text_pattern_ops" });
 
+                    b.HasIndex("TrashRootId")
+                        .HasDatabaseName("ix_items_trash_root_id")
+                        .HasFilter("trash_root_id IS NOT NULL");
+
+                    b.HasIndex("OwnerId", "TrashedAt")
+                        .HasDatabaseName("ix_items_trash_roots")
+                        .HasFilter("trash_root_id = id");
+
                     b.HasIndex("ParentId", "NameKey")
                         .IsUnique()
-                        .HasDatabaseName("ux_items_parent_id_name_key");
+                        .HasDatabaseName("ux_items_parent_id_name_key")
+                        .HasFilter("trashed_at IS NULL");
 
                     b.HasIndex("ParentId", "Kind", "NameKey")
                         .HasDatabaseName("ix_items_parent_id_kind_name_key");
@@ -179,6 +204,32 @@ namespace Drive.Infrastructure.Persistence.Migrations
                     b.ToTable("file_versions", (string)null);
                 });
 
+            modelBuilder.Entity("Drive.Domain.Stars.Star", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("UserId", "ItemId")
+                        .HasName("pk_stars");
+
+                    b.HasIndex("ItemId")
+                        .HasDatabaseName("ix_stars_item_id");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .HasDatabaseName("ix_stars_user_id_created_at");
+
+                    b.ToTable("stars", (string)null);
+                });
+
             modelBuilder.Entity("Drive.Domain.Uploads.PendingUpload", b =>
                 {
                     b.Property<Guid>("Id")
@@ -221,6 +272,10 @@ namespace Drive.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("size_bytes");
 
+                    b.Property<Guid?>("TargetItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_item_id");
+
                     b.HasKey("Id")
                         .HasName("pk_pending_uploads");
 
@@ -228,6 +283,29 @@ namespace Drive.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_pending_uploads_expires_at");
 
                     b.ToTable("pending_uploads", (string)null);
+                });
+
+            modelBuilder.Entity("Drive.Infrastructure.Persistence.ItemAccessRecord", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<DateTimeOffset>("LastPublishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_published_at");
+
+                    b.HasKey("UserId", "ItemId")
+                        .HasName("pk_item_access_log");
+
+                    b.HasIndex("ItemId")
+                        .HasDatabaseName("ix_item_access_log_item_id");
+
+                    b.ToTable("item_access_log", (string)null);
                 });
 
             modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.InboxState", b =>
@@ -453,7 +531,7 @@ namespace Drive.Infrastructure.Persistence.Migrations
                     b.HasOne("Drive.Domain.Items.DriveItem", null)
                         .WithMany()
                         .HasForeignKey("ParentId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_items_items_parent_id");
                 });
 
@@ -465,6 +543,26 @@ namespace Drive.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_file_versions_items_item_id");
+                });
+
+            modelBuilder.Entity("Drive.Domain.Stars.Star", b =>
+                {
+                    b.HasOne("Drive.Domain.Items.DriveItem", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_stars_items_item_id");
+                });
+
+            modelBuilder.Entity("Drive.Infrastructure.Persistence.ItemAccessRecord", b =>
+                {
+                    b.HasOne("Drive.Domain.Items.DriveItem", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_item_access_log_items_item_id");
                 });
 
             modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.OutboxMessage", b =>

@@ -48,7 +48,7 @@ describe('uploadFile', () => {
     const d = deps();
     const progress: number[] = [];
 
-    const item = await uploadFile(fileOf(10), 'folder-1', d, {
+    const item = await uploadFile(fileOf(10), { parentId: 'folder-1' }, d, {
       signal: new AbortController().signal,
       onProgress: (n) => progress.push(n),
     });
@@ -66,7 +66,10 @@ describe('uploadFile', () => {
   it('xin ký thêm URL cho part chưa có URL', async () => {
     const d = deps({ start: vi.fn().mockResolvedValue(session(3, 1)) });
 
-    await uploadFile(fileOf(10), 'f', d, { signal: new AbortController().signal, concurrency: 1 });
+    await uploadFile(fileOf(10), { parentId: 'f' }, d, {
+      signal: new AbortController().signal,
+      concurrency: 1,
+    });
 
     expect(d.signParts).toHaveBeenCalledWith('u1', [2, 3]);
     expect(d.calls).toEqual(['url-1', 'resigned-2', 'resigned-3']);
@@ -81,7 +84,10 @@ describe('uploadFile', () => {
       }),
     });
 
-    await uploadFile(fileOf(10), 'f', d, { signal: new AbortController().signal, concurrency: 1 });
+    await uploadFile(fileOf(10), { parentId: 'f' }, d, {
+      signal: new AbortController().signal,
+      concurrency: 1,
+    });
 
     expect(d.putPart).toHaveBeenCalledTimes(5); // part 1, part 2 ×3, part 3
     expect(d.sleep).toHaveBeenCalledTimes(2);
@@ -100,7 +106,7 @@ describe('uploadFile', () => {
     );
     d.start = vi.fn().mockResolvedValue(session(1));
 
-    await uploadFile(fileOf(3), 'f', d, { signal: new AbortController().signal });
+    await uploadFile(fileOf(3), { parentId: 'f' }, d, { signal: new AbortController().signal });
 
     expect(d.signParts).toHaveBeenCalledWith('u1', [1]);
     expect(d.complete).toHaveBeenCalledWith('u1', [{ partNumber: 1, eTag: '"etag-resigned-1"' }]);
@@ -127,7 +133,10 @@ describe('uploadFile', () => {
     );
     d.start = vi.fn().mockResolvedValue(session(1));
 
-    await uploadFile(fileOf(3), 'f', d, { signal: new AbortController().signal, maxRetries: 0 });
+    await uploadFile(fileOf(3), { parentId: 'f' }, d, {
+      signal: new AbortController().signal,
+      maxRetries: 0,
+    });
 
     expect(d.waitForOnline).toHaveBeenCalledTimes(1);
     expect(d.sleep).not.toHaveBeenCalled();
@@ -138,7 +147,7 @@ describe('uploadFile', () => {
     const d = deps({ putPart: vi.fn().mockRejectedValue(new PartUploadError(500)) });
 
     await expect(
-      uploadFile(fileOf(10), 'f', d, { signal: new AbortController().signal, maxRetries: 2 }),
+      uploadFile(fileOf(10), { parentId: 'f' }, d, { signal: new AbortController().signal, maxRetries: 2 }),
     ).rejects.toBeInstanceOf(PartUploadError);
 
     expect(d.abort).toHaveBeenCalledWith('u1');
@@ -154,7 +163,9 @@ describe('uploadFile', () => {
       }),
     });
 
-    await expect(uploadFile(fileOf(10), 'f', d, { signal: controller.signal })).rejects.toMatchObject({
+    await expect(
+      uploadFile(fileOf(10), { parentId: 'f' }, d, { signal: controller.signal }),
+    ).rejects.toMatchObject({
       name: 'AbortError',
     });
     expect(d.abort).toHaveBeenCalledWith('u1');

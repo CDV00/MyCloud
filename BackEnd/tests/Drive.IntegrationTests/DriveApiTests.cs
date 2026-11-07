@@ -9,9 +9,11 @@ using MyCloud.Testing;
 
 namespace Drive.IntegrationTests;
 
-public sealed class DriveApiTests(DriveApiFactory factory) : IClassFixture<DriveApiFactory>
+public sealed partial class DriveApiTests(DriveApiFactory factory) : IClassFixture<DriveApiFactory>
 {
-    private sealed record Item(Guid Id, Guid? ParentId, string Kind, string Name, string? MimeType, long SizeBytes, bool IsRoot, long Revision);
+    private sealed record Item(
+        Guid Id, Guid? ParentId, string Kind, string Name, string? MimeType, long SizeBytes, bool IsRoot, long Revision,
+        bool Starred = false, DateTimeOffset? TrashedAt = null, int VersionNo = 0);
 
     private sealed record Page(Item[] Items, string? NextPageToken);
 

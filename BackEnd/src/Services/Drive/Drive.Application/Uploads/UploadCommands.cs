@@ -1,5 +1,6 @@
 using Drive.Application.Abstractions;
 using Drive.Application.Items;
+using Drive.Application.Versions;
 using Drive.Domain;
 using Drive.Domain.Items;
 using Drive.Domain.Uploads;
@@ -19,16 +20,21 @@ public sealed record UploadDto(
 /// <summary>
 /// Bắt đầu upload (docs/05): Storage giữ chỗ quota + mở multipart, trả URL ký sẵn; trình duyệt PUT thẳng từng part
 /// lên object storage — byte của file không đi qua Gateway hay service .NET (ADR-002).
+/// <paramref name="TargetItemId"/> có giá trị ⇒ nội dung mới cho file đó (version kế tiếp), bỏ qua parent/name.
 /// </summary>
-public sealed record StartUploadCommand(Guid ParentId, string Name, long SizeBytes, string? MimeType, string? PublicBaseUrl)
+public sealed record StartUploadCommand(
+    Guid? ParentId, string? Name, long SizeBytes, string? MimeType, string? PublicBaseUrl, Guid? TargetItemId = null)
     : ICommand<UploadDto>;
 
 internal sealed class StartUploadCommandValidator : AbstractValidator<StartUploadCommand>
 {
     public StartUploadCommandValidator()
     {
-        RuleFor(x => x.ParentId).NotEmpty();
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(ItemName.MaxLength);
+        When(x => x.TargetItemId is null, () =>
+        {
+            RuleFor(x => x.ParentId).NotEmpty();
+            RuleFor(x => x.Name).NotEmpty().MaximumLength(ItemName.MaxLength);
+        });
         RuleFor(x => x.SizeBytes).GreaterThanOrEqualTo(0);
         RuleFor(x => x.MimeType).MaximumLength(255);
     }
@@ -42,23 +48,28 @@ internal sealed class StartUploadCommandHandler(
 {
     public async Task<Result<UploadDto>> Handle(StartUploadCommand request, CancellationToken cancellationToken)
     {
-        DriveItem parent = await access.GetFolderAsync(request.ParentId, ItemPermission.Edit, cancellationToken);
-        ItemName name = ItemName.Create(System.IO.Path.GetFileName(request.Name));
+        // Kiểm tra quyền + đích TRƯỚC khi Storage giữ chỗ quota.
+        DriveItem destination = request.TargetItemId is { } targetId
+            ? await access.GetFileAsync(targetId, ItemPermission.Edit, cancellationToken)
+            : await access.GetFolderAsync(request.ParentId!.Value, ItemPermission.Edit, cancellationToken);
+        ItemName? name = request.TargetItemId is null ? ItemName.Create(System.IO.Path.GetFileName(request.Name)) : null;
         string mimeType = string.IsNullOrWhiteSpace(request.MimeType) ? "application/octet-stream" : request.MimeType.Trim();
 
         StorageUploadSession session = await storage.CreateUploadSessionAsync(
             access.UserId, request.SizeBytes, mimeType, request.PublicBaseUrl, cancellationToken);
 
-        uploads.Add(PendingUpload.Start(
-            session.SessionId, access.UserId, parent, name, request.SizeBytes, mimeType, timeProvider.GetUtcNow(), session.ExpiresAt));
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        uploads.Add(name is { } fileName
+            ? PendingUpload.Start(session.SessionId, access.UserId, destination, fileName, request.SizeBytes, mimeType, now, session.ExpiresAt)
+            : PendingUpload.StartNewVersion(session.SessionId, access.UserId, destination, request.SizeBytes, mimeType, now, session.ExpiresAt));
 
         return new UploadDto(session.SessionId, session.PartSizeBytes, session.PartCount, session.Parts, session.ExpiresAt);
     }
 }
 
 /// <summary>
-/// Hoàn tất upload: Storage ghép part + kiểm tra kích thước, Drive tạo file (tự đổi tên nếu trùng) và phát
-/// <c>FileVersionAdded</c> để Storage "claim" blob (ADR-006). Gọi lặp sau khi thành công trả lại cùng file.
+/// Hoàn tất upload: Storage ghép part + kiểm tra kích thước, Drive tạo file (tự đổi tên nếu trùng) hoặc thêm version mới,
+/// và phát <c>FileVersionAdded</c> để Storage "claim" blob (ADR-006). Gọi lặp sau khi thành công trả lại cùng file.
 /// </summary>
 public sealed record CompleteUploadCommand(Guid UploadId, IReadOnlyList<CompletedPart> Parts) : ICommand<ItemDto>;
 
@@ -76,25 +87,37 @@ internal sealed class CompleteUploadCommandHandler(
     IPendingUploadRepository uploads,
     IDriveItemRepository items,
     IStorageClient storage,
-    UniqueNames uniqueNames) : ICommandHandler<CompleteUploadCommand, ItemDto>
+    UniqueNames uniqueNames,
+    VersionRetention retention,
+    ItemDtos dtos) : ICommandHandler<CompleteUploadCommand, ItemDto>
 {
     public async Task<Result<ItemDto>> Handle(CompleteUploadCommand request, CancellationToken cancellationToken)
     {
         PendingUpload upload = await FindOwnedAsync(request.UploadId, cancellationToken);
         if (upload.CompletedItemId is { } completedId)
         {
-            return ItemDto.From(await access.GetAsync(completedId, ItemPermission.View, cancellationToken));
+            return await dtos.ForAsync(await access.GetAsync(completedId, ItemPermission.View, cancellationToken), cancellationToken);
+        }
+
+        if (upload.TargetItemId is { } targetId)
+        {
+            DriveItem file = await access.GetFileAsync(targetId, ItemPermission.Edit, cancellationToken);
+            CompletedBlob content = await storage.CompleteUploadAsync(access.UserId, upload.Id, request.Parts, cancellationToken);
+            file.AddVersion(Guid.CreateVersion7(), content.BlobId, content.SizeBytes, upload.MimeType);
+            await retention.ApplyAsync(file, cancellationToken);
+            upload.MarkCompleted(file.Id);
+            return await dtos.ForAsync(file, cancellationToken);
         }
 
         DriveItem parent = await access.GetFolderAsync(upload.ParentId, ItemPermission.Edit, cancellationToken);
         CompletedBlob blob = await storage.CompleteUploadAsync(access.UserId, upload.Id, request.Parts, cancellationToken);
 
         ItemName name = await uniqueNames.ResolveAsync(parent.Id, ItemName.Create(upload.Name), isFile: true, cancellationToken);
-        var file = DriveItem.CreateFile(Guid.CreateVersion7(), parent, name, Guid.CreateVersion7(), blob.BlobId, blob.SizeBytes, upload.MimeType);
-        items.Add(file);
-        upload.MarkCompleted(file.Id);
+        var created = DriveItem.CreateFile(Guid.CreateVersion7(), parent, name, Guid.CreateVersion7(), blob.BlobId, blob.SizeBytes, upload.MimeType);
+        items.Add(created);
+        upload.MarkCompleted(created.Id);
 
-        return ItemDto.From(file);
+        return ItemDto.From(created, starred: false);
     }
 
     private async Task<PendingUpload> FindOwnedAsync(Guid uploadId, CancellationToken ct)
@@ -129,30 +152,35 @@ internal sealed class AbortUploadCommandHandler(ItemAccess access, IPendingUploa
 public sealed record DownloadLinkDto(string Url, DateTimeOffset ExpiresAt);
 
 /// <summary>
-/// URL tải (presigned, 5 phút). Trả JSON thay vì redirect vì trình duyệt không gắn được header Authorization khi điều
-/// hướng; frontend lấy URL rồi mở (docs/03 §3).
+/// URL tải (presigned, 5 phút) của version hiện tại hoặc <paramref name="VersionId"/>. Trả JSON thay vì redirect vì
+/// trình duyệt không gắn được header Authorization khi điều hướng (docs/03 §3). Là command vì ghi nhận lượt mở cho
+/// "Gần đây" (<c>ItemAccessed</c>, đi qua outbox).
 /// </summary>
-public sealed record GetDownloadUrlQuery(Guid ItemId, bool Inline, string? PublicBaseUrl) : IQuery<DownloadLinkDto>;
+public sealed record CreateDownloadLinkCommand(Guid ItemId, Guid? VersionId, bool Inline, string? PublicBaseUrl)
+    : ICommand<DownloadLinkDto>;
 
-internal sealed class GetDownloadUrlQueryHandler(ItemAccess access, IFileVersionReader versions, IStorageClient storage)
-    : IQueryHandler<GetDownloadUrlQuery, DownloadLinkDto>
+internal sealed class CreateDownloadLinkCommandHandler(
+    ItemAccess access,
+    IFileVersionRepository versions,
+    IStorageClient storage,
+    IItemAccessLog accessLog) : ICommandHandler<CreateDownloadLinkCommand, DownloadLinkDto>
 {
-    public async Task<Result<DownloadLinkDto>> Handle(GetDownloadUrlQuery request, CancellationToken cancellationToken)
+    public async Task<Result<DownloadLinkDto>> Handle(CreateDownloadLinkCommand request, CancellationToken cancellationToken)
     {
         DriveItem item = await access.GetAsync(request.ItemId, ItemPermission.View, cancellationToken);
-        if (item.IsFolder || item.CurrentVersionId is not { } versionId)
+        if (item.IsFolder || item.CurrentVersionId is not { } currentId)
         {
             throw new DriveException.NotAFile(item.Id);
         }
 
-        FileVersion version = await versions.GetAsync(versionId, cancellationToken);
+        Guid versionId = request.VersionId ?? currentId;
+        FileVersion version = await versions.FindAsync(versionId, cancellationToken) is { } v && v.ItemId == item.Id
+            ? v
+            : throw new DriveException.VersionNotFound(versionId);
+
         DownloadLink link = await storage.GetDownloadUrlAsync(
             item.OwnerId, version.BlobId, item.Name, version.MimeType, request.Inline, request.PublicBaseUrl, cancellationToken);
+        await accessLog.RecordAsync(item, access.UserId, request.Inline ? AccessActions.Open : AccessActions.Download, cancellationToken);
         return new DownloadLinkDto(link.Url, link.ExpiresAt);
     }
-}
-
-public interface IFileVersionReader
-{
-    Task<FileVersion> GetAsync(Guid versionId, CancellationToken ct);
 }

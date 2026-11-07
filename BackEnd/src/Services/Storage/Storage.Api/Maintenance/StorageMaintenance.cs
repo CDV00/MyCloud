@@ -56,6 +56,9 @@ public sealed partial class StorageMaintenance(
                 await s3.AbortMultipartAsync(blob.ObjectKey, blob.S3UploadId, ct);
             }
 
+            // Bản sao (CopyBlob) bị dừng giữa chừng có thể đã ghi object.
+            await s3.DeleteAsync(blob.ObjectKey, ct);
+
             if (await TransitionAsync(db, blob.Id, BlobStatus.Pending, BlobStatus.Aborted, ct))
             {
                 await quotas.ReleaseReservedAsync(db, blob.OwnerId, blob.ExpectedSizeBytes, ct);

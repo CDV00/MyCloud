@@ -1,4 +1,4 @@
-import type { DriveItem, PresignedPart, UploadSession } from '../../api/drive';
+import type { DriveItem, PresignedPart, UploadSession, UploadTarget } from '../../api/drive';
 
 /**
  * Upload một file theo kiểu S3 multipart, PUT thẳng từng part lên object storage bằng URL đã ký (ADR-002).
@@ -9,7 +9,7 @@ import type { DriveItem, PresignedPart, UploadSession } from '../../api/drive';
  */
 
 export interface UploadDependencies {
-  start(parentId: string, file: File, signal: AbortSignal): Promise<UploadSession>;
+  start(target: UploadTarget, file: File, signal: AbortSignal): Promise<UploadSession>;
   signParts(uploadId: string, partNumbers: number[]): Promise<PresignedPart[]>;
   complete(uploadId: string, parts: { partNumber: number; eTag: string }[]): Promise<DriveItem>;
   abort(uploadId: string): Promise<void>;
@@ -49,13 +49,13 @@ const SIGN_BATCH = 50;
 
 export async function uploadFile(
   file: File,
-  parentId: string,
+  target: UploadTarget,
   deps: UploadDependencies,
   options: UploadOptions,
 ): Promise<DriveItem> {
   const { signal, onProgress, onStarted, concurrency = 4, maxRetries = 6 } = options;
 
-  const session = await deps.start(parentId, file, signal);
+  const session = await deps.start(target, file, signal);
   onStarted?.(session.uploadId);
 
   // Một part hỏng hẳn ⇒ dừng luôn các part đang chạy song song (không upload vô ích).

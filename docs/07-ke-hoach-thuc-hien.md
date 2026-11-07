@@ -139,22 +139,44 @@ Sửa thêm trong Phase 0 (vì code được chuyển sang cấu trúc mới): b
 
 ---
 
-## Phase 3 — Thùng rác, Version, Gắn sao, Search (≈ 3 tuần)
+## Phase 3 — Thùng rác, Version, Gắn sao, Search ✅
 
 **Drive**
-- [ ] Trash / restore (cả cây con, khôi phục về root nếu cha đã mất) / xoá vĩnh viễn / dọn thùng rác; job purge 30 ngày; event `ItemTrashed`, `ItemRestored`, `ItemsPurged` (theo lô).
-- [ ] Version: upload đè tạo version mới, liệt kê, khôi phục; giới hạn số version giữ lại (cấu hình).
-- [ ] Sao chép file (`CopyBlob`) và thư mục (job nền).
-- [ ] Gắn sao, `GET /starred`. Event `ItemAccessed` (gộp 5 phút).
+- [x] Thùng rác theo **nhóm** (`trash_root_id`): xoá thư mục đánh dấu nó + mọi con cháu chưa bị xoá trong cùng transaction (1 câu UPDATE); khôi phục trả đúng cả nhóm, item đã xoá riêng trước đó vẫn ở thùng rác. Cha đang ở thùng rác ⇒ khôi phục về "Drive của tôi"; trùng tên ⇒ tự đổi `tên (1)`.
+- [x] Item trong thùng rác: xem / tải / xem version được, mọi thay đổi ⇒ 409 `DRIVE.ITEM_TRASHED`; tên được giải phóng (unique index có điều kiện `trashed_at IS NULL`).
+- [x] Xoá vĩnh viễn (`DELETE /items/{id}`), dọn sạch (`DELETE /trash`), job xoá sau 30 ngày (cấu hình); theo lô 500 item sâu nhất trước, mỗi lô một transaction + 1 event `ItemsPurged` (kèm blob của **mọi** version).
+- [x] Event `ItemTrashed`, `ItemRestored` (chỉ item gốc của nhóm — consumer suy ra phần còn lại qua `AncestorIds`), `ItemsPurged`.
+- [x] Version: upload với `targetItemId` ⇒ version mới; liệt kê; tải một version cụ thể; **khôi phục = version mới** có nội dung cũ (Storage `CopyBlob`), xoá version cũ; giữ tối đa `Drive:MaxVersionsPerFile` (mặc định 100) ⇒ event `FileVersionsDeleted`.
+- [x] Sao chép file (`CopyBlob`) và thư mục (cả cây, tối đa 500 item / lần, kiểm tra dung lượng trước).
+- [x] Gắn sao (`PUT/DELETE /items/{id}/star`, idempotent), `GET /starred` (ẩn item trong thùng rác); `starred` trong mọi `ItemDto`.
+- [x] `ItemAccessed` khi lấy link tải / mở, gộp tối đa 1 event / người / item / 5 phút bằng 1 câu UPSERT có điều kiện.
 
-**Storage**: consumer `ItemsPurged` → xoá object + trả quota (idempotent).
+**Storage**
+- [x] gRPC `CopyBlob` (giữ chỗ quota → CopyObject → Uploaded, chờ Drive claim như upload thường).
+- [x] Consumer `ItemsPurged`, `FileVersionsDeleted` → xoá object (DeleteObjects theo lô) rồi đổi trạng thái → `Deleted` có điều kiện, trả quota đúng một lần (idempotent, bỏ qua blob của người khác).
 
-**Search service** (tái định hướng từ `MyDrive.Query.*`)
-- [ ] Đổi tên, giữ lại `MongoRepository` (sửa: `MongoClient` singleton, bỏ `Task.Run`, `await` đầy đủ).
-- [ ] Read model `search_items`, `recent`, `activity`; consumer cho các event của Drive, áp dụng theo `Revision`; idempotency bằng outbox/inbox Mongo.
-- [ ] `GET /search` (tên, loại, ngày, chủ sở hữu), `/recent`, `/items/{id}/activity`.
+**Search service**
+- [x] Read model `items` thêm `ancestorIds`, `category`, `nameFolded` (tìm không dấu: "bao cao" thấy "Báo cáo"), `trashed`; collection `recent` (TTL 90 ngày) và `activity` (TTL 180 ngày).
+- [x] Áp dụng theo `Revision`; con cháu khi di chuyển / khôi phục được đồng bộ **theo trạng thái hiện tại của thư mục cha** (update pipeline) nên event đến sai thứ tự vẫn hội tụ; event cùng chủ sở hữu xử lý tuần tự (MassTransit partitioner theo `OwnerId`).
+- [x] `GET /search?q=&type=&modifiedAfter=&pageToken`, `GET /recent`, `GET /items/{id}/activity` (thư mục gồm cả hoạt động bên trong).
 
-**Frontend**: trang Thùng rác, Có gắn dấu sao, Gần đây; ô tìm kiếm + bộ lọc; panel chi tiết (thông tin, hoạt động, version).
+**Frontend**
+- [x] Trang Thùng rác (khôi phục, xoá vĩnh viễn, dọn sạch có xác nhận), Có gắn dấu sao, Gần đây; trang chủ hiện tệp gần đây.
+- [x] Ô tìm kiếm trên thanh trên cùng + trang kết quả có lọc loại / thời gian sửa.
+- [x] Panel chi tiết: thông tin, hoạt động, phiên bản (tải, khôi phục, xoá, tải lên phiên bản mới).
+- [x] Menu thao tác dùng chung: tạo bản sao, gắn sao, chuyển vào thùng rác (có "Huỷ"), phím Delete.
+
+**Test**
+- [x] Domain (+10): thùng rác, khôi phục, version, giới hạn version.
+- [x] Integration Drive (+14): nhóm thùng rác, sửa item đã xoá ⇒ 409, khôi phục về gốc + đổi tên, xoá vĩnh viễn phát đủ blob, dọn sạch, job 30 ngày, version (upload / khôi phục / xoá / giới hạn), gắn sao, sao chép cây, quá giới hạn / quota, gộp `ItemAccessed`, **IDOR** cho 11 thao tác mới.
+- [x] Integration Storage (+4, MinIO thật): `CopyBlob` (byte giống hệt, tính quota, chặn người khác, quá quota không rò giữ chỗ), `ItemsPurged` (xoá object, trả quota đúng một lần), `FileVersionsDeleted`.
+
+**Lệch so với kế hoạch**
+- **Sao chép thư mục chạy trong request** (tối đa 500 item) thay vì job nền: job nền không có JWT của người dùng để gọi Storage; làm khi có định danh service (Phase 4/5).
+- **Không dùng inbox/transaction Mongo** (nên chưa cần replica set): consumer của Search idempotent theo cách dựng (điều kiện revision, `_id` = id event, upsert tiến về phía trước).
+- `ItemTrashed` / `ItemRestored` không mang danh sách id con (`AffectedItemIds`) — Search ẩn cây con qua `ancestorIds`.
+- Khôi phục version tạo version mới (sao chép blob) thay vì trỏ lại version cũ: lịch sử chỉ tiến về phía trước, không blob nào bị hai version dùng chung.
+- `GET /search` chưa có lọc chủ sở hữu (`owner=others`) — chỉ có ý nghĩa khi có chia sẻ (Phase 4). Document Search tạo trước Phase 3 không có `ancestorIds` (dữ liệu dev).
 
 **Hoàn thành khi**: xoá thư mục 1.000 file → khôi phục đầy đủ; xoá vĩnh viễn → object trong MinIO biến mất và quota giảm; tìm thấy file vừa upload trong < 2 s.
 

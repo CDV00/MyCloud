@@ -1,6 +1,7 @@
 using System.Reflection;
 using Drive.Application.Abstractions;
 using Drive.Application.Items;
+using Drive.Application.Versions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Drive.Application;
@@ -15,6 +16,8 @@ public static class DriveApplication
         services.AddScoped<IItemAuthorizer, OwnerOnlyItemAuthorizer>(); // Phase 4: thay bằng authorizer gọi Sharing
         services.AddScoped<ItemAccess>();
         services.AddScoped<UniqueNames>();
+        services.AddScoped<ItemDtos>();
+        services.AddScoped<VersionRetention>();
         return services;
     }
 }
