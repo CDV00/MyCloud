@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- Phase 0: 1 project. Phase 1 tách thành Api/Application/Domain/Infrastructure khi làm refresh token, RS256 + JWKS. -->
+  <PropertyGroup>
+    <UserSecretsId>mycloud-identity-api</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="EFCore.NamingConventions" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Aspire\MyCloud.ServiceDefaults\MyCloud.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Web\MyCloud.BuildingBlocks.Web.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Messaging\MyCloud.BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\Contracts\MyCloud.Contracts.Events\MyCloud.Contracts.Events.csproj" />
+  </ItemGroup>
+</Project>

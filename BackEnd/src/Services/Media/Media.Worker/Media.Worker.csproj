@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <!-- Phase 0: worker khung. Phase 5: thumbnail/preview từ FileVersionAdded — docs/03 §8. -->
+  <PropertyGroup>
+    <UserSecretsId>mycloud-media-worker</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Aspire\MyCloud.ServiceDefaults\MyCloud.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Messaging\MyCloud.BuildingBlocks.Messaging.csproj" />
+  </ItemGroup>
+</Project>

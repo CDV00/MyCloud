@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Application\MyCloud.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="..\Drive.Domain\Drive.Domain.csproj" />
+  </ItemGroup>
+</Project>

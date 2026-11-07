@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- Phase 0: service khung. Phase 2: upload session, presigned URL (MinIO), quota — docs/03 §4. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Aspire\MyCloud.ServiceDefaults\MyCloud.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Web\MyCloud.BuildingBlocks.Web.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,27 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.6.4">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UserSecretsId>mycloud-apphost</UserSecretsId>
+    <!-- Chạy bằng `dotnet run`, không cần Aspire CLI bundle. -->
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);ASPIRE010</MSBuildWarningsAsMessages>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" />
+    <PackageReference Include="Aspire.Hosting.RabbitMQ" />
+    <PackageReference Include="Aspire.Hosting.Redis" />
+    <PackageReference Include="Aspire.Hosting.MongoDB" />
+    <PackageReference Include="CommunityToolkit.Aspire.Hosting.Minio" />
+    <PackageReference Include="CommunityToolkit.Aspire.Hosting.MailPit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Gateway\MyCloud.Gateway\MyCloud.Gateway.csproj" />
+    <ProjectReference Include="..\..\Services\Identity\Identity.Api\Identity.Api.csproj" />
+    <ProjectReference Include="..\..\Services\Drive\Drive.Api\Drive.Api.csproj" />
+    <ProjectReference Include="..\..\Services\Storage\Storage.Api\Storage.Api.csproj" />
+    <ProjectReference Include="..\..\Services\Sharing\Sharing.Api\Sharing.Api.csproj" />
+    <ProjectReference Include="..\..\Services\Search\Search.Api\Search.Api.csproj" />
+    <ProjectReference Include="..\..\Services\Notification\Notification.Api\Notification.Api.csproj" />
+    <ProjectReference Include="..\..\Services\Media\Media.Worker\Media.Worker.csproj" />
+  </ItemGroup>
+</Project>

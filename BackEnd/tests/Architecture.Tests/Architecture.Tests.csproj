@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="NetArchTest.Rules" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Services\Drive\Drive.Infrastructure\Drive.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Contracts\MyCloud.Contracts.Events\MyCloud.Contracts.Events.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\MyCloud.BuildingBlocks.Domain\MyCloud.BuildingBlocks.Domain.csproj" />
+  </ItemGroup>
+</Project>

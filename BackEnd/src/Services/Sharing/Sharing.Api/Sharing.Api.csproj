@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- Phase 0: service khung. Phase 4: quyền chia sẻ + OpenFGA — docs/03 §5. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Aspire\MyCloud.ServiceDefaults\MyCloud.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Web\MyCloud.BuildingBlocks.Web.csproj" />
+  </ItemGroup>
+</Project>

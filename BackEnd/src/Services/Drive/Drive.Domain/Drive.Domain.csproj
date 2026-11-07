@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\MyCloud.BuildingBlocks.Domain\MyCloud.BuildingBlocks.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Drive.Domain.Tests" />
+  </ItemGroup>
+</Project>

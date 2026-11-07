@@ -8,3 +8,7 @@
 **/.vs
 **/logs
 **/Upload/Files
+
+# Phase 0 (.NET 10)
+**/App_Data/
+**/TestResults/
