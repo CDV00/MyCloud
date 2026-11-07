@@ -1,3 +1,4 @@
+using Drive.Domain.Comments;
 using Drive.Domain.Items;
 using Drive.Domain.Stars;
 using Drive.Domain.Uploads;
@@ -26,6 +27,7 @@ internal sealed class DriveItemConfiguration : IEntityTypeConfiguration<DriveIte
         builder.Ignore(x => x.IsFolder);
         builder.Ignore(x => x.IsTrashed);
         builder.Ignore(x => x.IsTrashRoot);
+        builder.Ignore(x => x.HasThumbnail);
 
         // NO ACTION (kiểm tra cuối câu lệnh) thay vì RESTRICT: xoá vĩnh viễn cả cha lẫn con trong một câu DELETE.
         builder.HasOne<DriveItem>().WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.NoAction);
@@ -55,8 +57,26 @@ internal sealed class FileVersionConfiguration : IEntityTypeConfiguration<FileVe
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).ValueGeneratedNever();
         builder.Property(x => x.MimeType).HasMaxLength(255).IsRequired();
+        builder.Property(x => x.Source).HasConversion<short>().HasDefaultValue(VersionSource.Upload).HasSentinel(VersionSource.Upload);
+        builder.Property(x => x.Note).HasMaxLength(FileVersion.MaxNoteLength);
         builder.HasIndex(x => new { x.ItemId, x.VersionNo }).IsUnique();
         builder.HasIndex(x => x.BlobId);
+    }
+}
+
+internal sealed class ItemCommentConfiguration : IEntityTypeConfiguration<ItemComment>
+{
+    public void Configure(EntityTypeBuilder<ItemComment> builder)
+    {
+        builder.ToTable("item_comments");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Id).ValueGeneratedNever();
+        builder.Property(x => x.Body).HasMaxLength(ItemComment.MaxLength).IsRequired();
+        builder.Ignore(x => x.IsDeleted);
+        // Xoá vĩnh viễn tệp ⇒ xoá luôn trao đổi. Phiên bản bị xoá thì giữ tin nhắn (hiện "phiên bản đã xoá").
+        builder.HasOne<DriveItem>().WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(x => new { x.ItemId, x.CreatedAt });
+        builder.HasIndex(x => x.ParentId);
     }
 }
 
@@ -100,6 +120,8 @@ internal sealed class PendingUploadConfiguration : IEntityTypeConfiguration<Pend
         builder.Property(x => x.Id).ValueGeneratedNever();
         builder.Property(x => x.Name).HasMaxLength(ItemName.MaxLength).IsRequired();
         builder.Property(x => x.MimeType).HasMaxLength(255).IsRequired();
+        builder.Property(x => x.Source).HasConversion<short>().HasDefaultValue(VersionSource.Upload).HasSentinel(VersionSource.Upload);
+        builder.Property(x => x.Note).HasMaxLength(FileVersion.MaxNoteLength);
         builder.HasIndex(x => x.ExpiresAt);
     }
 }

@@ -12,8 +12,8 @@ import { formatModified } from '../lib/format';
 export default function HomePage() {
   const { user } = useAuth();
   const recent = useRecent();
-  const actions = useItemActions();
   const items = (recent.data ?? []).slice(0, 8);
+  const actions = useItemActions({ items: items.map((r) => hitToItem(r.item)) });
 
   return (
     <Stack spacing={3}>

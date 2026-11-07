@@ -81,6 +81,15 @@ public sealed class S3ObjectStorage : IDisposable
                             Filter = new LifecycleFilter { LifecycleFilterPredicate = new LifecyclePrefixPredicate { Prefix = "u/" } },
                             AbortIncompleteMultipartUpload = new LifecycleRuleAbortIncompleteMultipartUpload { DaysAfterInitiation = 7 },
                         },
+                        // Tệp zip tạm (job của service xoá sau ArchiveTtl); rule này chỉ là lưới an toàn.
+                        new LifecycleRule
+                        {
+                            Id = "expire-archives",
+                            Status = LifecycleRuleStatus.Enabled,
+                            Filter = new LifecycleFilter { LifecycleFilterPredicate = new LifecyclePrefixPredicate { Prefix = "a/" } },
+                            Expiration = new LifecycleRuleExpiration { Days = 3 },
+                            AbortIncompleteMultipartUpload = new LifecycleRuleAbortIncompleteMultipartUpload { DaysAfterInitiation = 1 },
+                        },
                     ],
                 },
             }, ct);
@@ -114,9 +123,11 @@ public sealed class S3ObjectStorage : IDisposable
         });
     }
 
-    public string PresignDownload(string? publicBaseUrl, string key, string fileName, string contentType, bool inline, DateTimeOffset expiresAt)
+    /// <param name="internalEndpoint">Ký cho endpoint nội bộ (service đọc object), bỏ qua gốc URL công khai.</param>
+    public string PresignDownload(
+        string? publicBaseUrl, string key, string fileName, string contentType, bool inline, DateTimeOffset expiresAt, bool internalEndpoint = false)
     {
-        (AmazonS3Client signer, Protocol protocol) = SignerFor(publicBaseUrl);
+        (AmazonS3Client signer, Protocol protocol) = internalEndpoint ? InternalSigner() : SignerFor(publicBaseUrl);
         var request = new GetPreSignedUrlRequest
         {
             BucketName = Bucket,
@@ -128,6 +139,62 @@ public sealed class S3ObjectStorage : IDisposable
         request.ResponseHeaderOverrides.ContentDisposition = ContentDisposition(fileName, inline);
         request.ResponseHeaderOverrides.ContentType = contentType;
         return signer.GetPreSignedURL(request);
+    }
+
+    /// <summary>Presigned GET cho ảnh nhỏ (thumbnail): hiển thị trực tiếp, trình duyệt được cache tới khi URL hết hạn.</summary>
+    public string PresignImage(string? publicBaseUrl, string key, string contentType, DateTimeOffset expiresAt, TimeSpan cacheFor)
+    {
+        (AmazonS3Client signer, Protocol protocol) = SignerFor(publicBaseUrl);
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = Bucket,
+            Key = key,
+            Verb = HttpVerb.GET,
+            Expires = expiresAt.UtcDateTime,
+            Protocol = protocol,
+        };
+        request.ResponseHeaderOverrides.ContentType = contentType;
+        request.ResponseHeaderOverrides.CacheControl =
+            "private, max-age=" + ((long)cacheFor.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return signer.GetPreSignedURL(request);
+    }
+
+    public Task PutAsync(string key, byte[] content, string contentType, CancellationToken ct) =>
+        _internal.PutObjectAsync(new PutObjectRequest
+        {
+            BucketName = Bucket,
+            Key = key,
+            InputStream = new MemoryStream(content, writable: false),
+            ContentType = contentType,
+            AutoCloseStream = true,
+        }, ct);
+
+    /// <summary>Đọc object dạng stream (đóng stream = giải phóng kết nối). Null nếu object không tồn tại.</summary>
+    public async Task<Stream?> OpenReadAsync(string key, CancellationToken ct)
+    {
+        try
+        {
+            GetObjectResponse response = await _internal.GetObjectAsync(Bucket, key, ct);
+            return new ObjectReadStream(response);
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    public async Task<string> UploadPartAsync(string key, string uploadId, int partNumber, Stream content, CancellationToken ct)
+    {
+        UploadPartResponse response = await _internal.UploadPartAsync(new UploadPartRequest
+        {
+            BucketName = Bucket,
+            Key = key,
+            UploadId = uploadId,
+            PartNumber = partNumber,
+            InputStream = content,
+            PartSize = content.Length,
+        }, ct);
+        return response.ETag;
     }
 
     public async Task<IReadOnlyList<UploadedPart>> ListPartsAsync(string key, string uploadId, CancellationToken ct)
@@ -238,6 +305,9 @@ public sealed class S3ObjectStorage : IDisposable
 
         return $"{type}; filename=\"{ascii}\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}";
     }
+
+    private (AmazonS3Client Client, Protocol Protocol) InternalSigner() =>
+        (_internal, _connection.Endpoint.Scheme == Uri.UriSchemeHttps ? Protocol.HTTPS : Protocol.HTTP);
 
     private (AmazonS3Client Client, Protocol Protocol) SignerFor(string? requestBaseUrl)
     {

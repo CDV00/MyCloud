@@ -1,6 +1,7 @@
 using Carter;
 using MyCloud.BuildingBlocks.Application.Abstractions;
 using MyCloud.BuildingBlocks.Web;
+using Storage.Api.Archives;
 using Storage.Api.ObjectStorage;
 using Storage.Api.Uploads;
 
@@ -27,6 +28,24 @@ public sealed class StorageEndpoints : ICarterModule
         api.MapPost("/uploads/{sessionId:guid}/part-urls", SignPartsAsync).WithName("SignUploadParts");
         api.MapGet("/uploads/{sessionId:guid}/parts", ListPartsAsync).WithName("ListUploadedParts");
         api.MapGet("/quota", GetQuotaAsync).WithName("GetQuota");
+
+        // Tệp zip (tải nhiều item / thư mục — ADR-015). Tạo yêu cầu đi qua Drive (kiểm tra quyền, dựng danh sách file).
+        api.MapGet("/archives/{archiveId:guid}", GetArchiveAsync).WithName("GetArchive");
+        api.MapPost("/archives/{archiveId:guid}/download-url", GetArchiveDownloadUrlAsync).WithName("GetArchiveDownloadUrl");
+    }
+
+    private static async Task<IResult> GetArchiveAsync(Guid archiveId, ArchiveService archives, ICurrentUser user, HttpResponse response, CancellationToken ct)
+    {
+        response.Headers.CacheControl = "no-store";
+        return Results.Ok(await archives.GetAsync(user.GetRequiredUserId(), archiveId, ct));
+    }
+
+    private static async Task<IResult> GetArchiveDownloadUrlAsync(
+        Guid archiveId, ArchiveService archives, ICurrentUser user, HttpRequest http, CancellationToken ct)
+    {
+        DownloadUrl url = await archives.GetDownloadUrlAsync(user.GetRequiredUserId(), archiveId, http.GetPublicBaseUrl(), ct);
+        http.HttpContext.Response.Headers.CacheControl = "no-store";
+        return Results.Ok(url);
     }
 
     private static async Task<IResult> SignPartsAsync(

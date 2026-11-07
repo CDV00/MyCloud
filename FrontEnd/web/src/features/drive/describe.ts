@@ -52,6 +52,12 @@ export function describeActivity(
       return `${actor} đã chuyển ${name} vào thùng rác`;
     case 'restored':
       return `${actor} đã khôi phục ${name}`;
+    case 'edited':
+      return `${actor} đã chỉnh sửa ${name}${entry.versionNo ? ` (phiên bản ${entry.versionNo})` : ''}`;
+    case 'version_restored':
+      return `${actor} đã khôi phục ${name} về phiên bản ${entry.restoredFromVersionNo ?? '?'}${
+        entry.versionNo ? ` (thành phiên bản ${entry.versionNo})` : ''
+      }`;
     case 'version_added':
       return `${actor} đã tải lên phiên bản ${entry.versionNo ?? ''} của ${name}`.replace('  ', ' ');
     default:

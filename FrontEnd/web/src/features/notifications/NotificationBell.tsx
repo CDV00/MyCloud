@@ -1,3 +1,5 @@
+import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
+import FolderZipOutlinedIcon from '@mui/icons-material/FolderZipOutlined';
 import FolderSharedOutlinedIcon from '@mui/icons-material/FolderSharedOutlined';
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import StorageIcon from '@mui/icons-material/Storage';
@@ -15,32 +17,60 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { getAccessToken, refreshAccessToken } from '../../api/http';
 import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  NOTIFICATION_HUB,
   type AppNotification,
 } from '../../api/notifications';
-import { formatModified } from '../../lib/format';
+import { toUserMessage } from '../../api/errors';
+import { formatModified, formatSize } from '../../lib/format';
+import { archiveStore } from '../archive/archiveStore';
+import { liveHub } from '../live/liveHub';
 import { searchKeys } from '../drive/queries';
 
 const notificationKey = ['notifications'] as const;
 
 /** Nội dung hiển thị của một thông báo. */
 function describeNotification(n: AppNotification): string {
-  if (n.type === 'item_shared') {
-    const what = n.payload.itemKind === 'folder' ? 'thư mục' : 'tệp';
-    return `${n.payload.sharedByName} đã chia sẻ ${what} “${n.payload.itemName}” với bạn`;
+  switch (n.type) {
+    case 'item_shared': {
+      const what = n.payload.itemKind === 'folder' ? 'thư mục' : 'tệp';
+      return `${n.payload.sharedByName} đã chia sẻ ${what} “${n.payload.itemName}” với bạn`;
+    }
+    case 'archive_ready':
+      return `“${n.payload.name}” đã sẵn sàng để tải xuống (${formatSize(n.payload.sizeBytes)})`;
+    case 'archive_failed':
+      return `Không tạo được “${n.payload.name}”`;
+    case 'comment':
+      return n.payload.mentioned
+        ? `${n.payload.authorName} đã nhắc đến bạn trong “${n.payload.itemName}”`
+        : n.payload.versionNo
+          ? `${n.payload.authorName} đã góp ý phiên bản ${n.payload.versionNo} của “${n.payload.itemName}”`
+          : n.payload.isReply
+            ? `${n.payload.authorName} đã trả lời trong “${n.payload.itemName}”`
+            : `${n.payload.authorName} đã bình luận về “${n.payload.itemName}”`;
+    default:
+      return n.payload.percent >= 100
+        ? 'Bạn đã dùng hết dung lượng lưu trữ'
+        : `Bạn đã dùng ${n.payload.percent}% dung lượng lưu trữ`;
   }
-  return n.payload.percent >= 100
-    ? 'Bạn đã dùng hết dung lượng lưu trữ'
-    : `Bạn đã dùng ${n.payload.percent}% dung lượng lưu trữ`;
+}
+
+function secondaryText(n: AppNotification): string {
+  if (n.type === 'item_shared' && n.payload.message)
+    return `“${n.payload.message}” · ${formatModified(n.createdAt)}`;
+  if (n.type === 'comment') return `“${n.payload.excerpt}” · ${formatModified(n.createdAt)}`;
+  if (n.type === 'archive_ready') {
+    return new Date(n.payload.expiresAt) < new Date()
+      ? `Đã hết hạn · ${formatModified(n.createdAt)}`
+      : `Bấm để tải xuống · hết hạn ${formatModified(n.payload.expiresAt)}`;
+  }
+
+  return formatModified(n.createdAt);
 }
 
 /**
@@ -57,34 +87,18 @@ export function NotificationBell() {
   const markRead = useMutation({ mutationFn: markNotificationRead, onSettled: refresh });
   const markAll = useMutation({ mutationFn: markAllNotificationsRead, onSettled: refresh });
 
-  useEffect(() => {
-    const connection = new HubConnectionBuilder()
-      .withUrl(NOTIFICATION_HUB, {
-        accessTokenFactory: async () => getAccessToken() ?? (await refreshAccessToken()) ?? '',
-      })
-      .withAutomaticReconnect()
-      .configureLogging(LogLevel.Warning)
-      .build();
-
-    connection.on('notification', (n: AppNotification) => {
-      setToast(describeNotification(n));
-      void queryClient.invalidateQueries({ queryKey: notificationKey });
-      if (n.type === 'item_shared') {
-        // "Được chia sẻ với tôi" cập nhật khi Search nhận event (trễ vài giây).
-        setTimeout(() => void queryClient.invalidateQueries({ queryKey: searchKeys.all }), 1500);
-      }
-    });
-
-    let stopped = false;
-    void connection.start().catch(() => {
-      // Hub chưa sẵn sàng / mất mạng: danh sách vẫn đọc được qua REST, lần mở menu sau sẽ thấy thông báo mới.
-      if (!stopped) setTimeout(() => void connection.start().catch(() => undefined), 10_000);
-    });
-    return () => {
-      stopped = true;
-      void connection.stop();
-    };
-  }, [queryClient]);
+  useEffect(
+    () =>
+      liveHub.onNotification((n) => {
+        setToast(describeNotification(n));
+        void queryClient.invalidateQueries({ queryKey: notificationKey });
+        if (n.type === 'item_shared') {
+          // "Được chia sẻ với tôi" cập nhật khi Search nhận event (trễ vài giây).
+          setTimeout(() => void queryClient.invalidateQueries({ queryKey: searchKeys.all }), 1500);
+        }
+      }),
+    [queryClient],
+  );
 
   const items = notifications.data?.items ?? [];
   const unread = notifications.data?.unreadCount ?? 0;
@@ -94,7 +108,11 @@ export function NotificationBell() {
     if (!n.read) markRead.mutate(n.id);
     if (n.type === 'item_shared') {
       navigate(n.payload.itemKind === 'folder' ? `/my-drive/folders/${n.payload.itemId}` : '/shared');
-    } else {
+    } else if (n.type === 'archive_ready') {
+      archiveStore.download(n.payload.archiveId).catch((e: unknown) => setToast(toUserMessage(e)));
+    } else if (n.type === 'comment') {
+      navigate(`/files/${n.payload.itemId}?panel=history`);
+    } else if (n.type === 'quota') {
       navigate('/storage');
     }
   }
@@ -136,17 +154,20 @@ export function NotificationBell() {
             <ListItemIcon sx={{ mt: 0.5 }}>
               {n.type === 'item_shared' ? (
                 <FolderSharedOutlinedIcon fontSize="small" />
+              ) : n.type === 'comment' ? (
+                <ForumOutlinedIcon fontSize="small" />
+              ) : n.type === 'archive_ready' || n.type === 'archive_failed' ? (
+                <FolderZipOutlinedIcon
+                  fontSize="small"
+                  color={n.type === 'archive_failed' ? 'error' : undefined}
+                />
               ) : (
                 <StorageIcon fontSize="small" />
               )}
             </ListItemIcon>
             <ListItemText
               primary={describeNotification(n)}
-              secondary={
-                n.type === 'item_shared' && n.payload.message
-                  ? `“${n.payload.message}” · ${formatModified(n.createdAt)}`
-                  : formatModified(n.createdAt)
-              }
+              secondary={secondaryText(n)}
               slotProps={{ primary: { sx: { fontWeight: n.read ? 400 : 600 } } }}
             />
             {!n.read && (

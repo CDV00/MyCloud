@@ -16,6 +16,11 @@ public sealed record CompletedBlob(Guid BlobId, long SizeBytes);
 
 public sealed record DownloadLink(string Url, DateTimeOffset ExpiresAt);
 
+public sealed record ThumbnailLinks(IReadOnlyList<string> Urls, DateTimeOffset ExpiresAt);
+
+/// <summary>Một mục của tệp zip: <paramref name="BlobId"/> null ⇒ thư mục (đường dẫn kết thúc bằng "/").</summary>
+public sealed record ArchiveEntry(string Path, Guid? BlobId, long SizeBytes, string? MimeType);
+
 public sealed record StorageQuota(long LimitBytes, long UsedBytes, long ReservedBytes)
 {
     public long AvailableBytes => Math.Max(0, LimitBytes - UsedBytes - ReservedBytes);
@@ -44,4 +49,10 @@ public interface IStorageClient
     Task<CompletedBlob> CopyBlobAsync(Guid userId, Guid sourceOwnerId, Guid sourceBlobId, CancellationToken ct);
 
     Task<StorageQuota> GetQuotaAsync(Guid userId, CancellationToken ct);
+
+    /// <summary>URL thumbnail (cùng thứ tự với <paramref name="blobIds"/>) — chỉ gọi cho blob đã có thumbnail.</summary>
+    Task<ThumbnailLinks> GetThumbnailUrlsAsync(IReadOnlyList<Guid> blobIds, int size, string? publicBaseUrl, CancellationToken ct);
+
+    /// <summary>Yêu cầu Storage nén các entry (đã kiểm tra quyền) thành tệp zip của <paramref name="userId"/>; trả id.</summary>
+    Task<Guid> CreateArchiveAsync(Guid userId, string name, IReadOnlyList<ArchiveEntry> entries, CancellationToken ct);
 }

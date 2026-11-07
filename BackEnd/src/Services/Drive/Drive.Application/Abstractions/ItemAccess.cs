@@ -28,6 +28,9 @@ public enum ItemPermission
 
     /// <summary>Thùng rác, khôi phục, xoá vĩnh viễn — chỉ chủ sở hữu (<c>can_delete: owner</c>).</summary>
     Manage,
+
+    /// <summary>Viết trong trao đổi / góp ý phiên bản — Commenter trở lên (ADR-017).</summary>
+    Comment,
 }
 
 /// <summary>Ai đang truy cập: người dùng đã đăng nhập và/hoặc người mở link chia sẻ (có thể ẩn danh).</summary>
@@ -81,6 +84,7 @@ public sealed class ItemAccess(IDriveItemRepository items, IItemAuthorizer autho
     {
         ItemPermission.View => AccessRole.Viewer,
         ItemPermission.Manage => AccessRole.Owner,
+        ItemPermission.Comment => AccessRole.Commenter,
         _ => AccessRole.Editor,
     };
 

@@ -91,7 +91,7 @@ internal sealed class CopyItemCommandHandler(
                 ? DriveItem.CreateFolder(Guid.CreateVersion7(), parent, copyName)
                 : DriveItem.CreateFile(
                     Guid.CreateVersion7(), parent, copyName, Guid.CreateVersion7(),
-                    blobs[original.Id].BlobId, blobs[original.Id].SizeBytes, currentVersions[original.Id].MimeType);
+                    blobs[original.Id].BlobId, blobs[original.Id].SizeBytes, currentVersions[original.Id].MimeType, VersionSource.Copy);
             items.Add(copy);
             return copy;
         }

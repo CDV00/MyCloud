@@ -35,6 +35,7 @@ public static class DependencyInjection
         {
             x.AddPostgresOutbox<DriveDbContext>();
             x.AddConsumer<UserRegisteredConsumer>();
+            x.AddConsumer<ThumbnailGeneratedConsumer>();
         });
 
         IServiceCollection services = builder.Services;
@@ -46,6 +47,10 @@ public static class DependencyInjection
         services.AddScoped<IStarRepository, StarRepository>();
         services.AddScoped<ITrashPurger, TrashPurger>();
         services.AddScoped<IItemAccessLog, ItemAccessLog>();
+        services.AddScoped<IItemCommentRepository, ItemCommentRepository>();
+        services.AddScoped<ICollaborationEvents, CollaborationEvents>();
+        services.AddOptions<CollaborationOptions>().Bind(builder.Configuration.GetSection(CollaborationOptions.SectionName));
+        services.AddSingleton<ILiveRoomTokens, LiveRoomTokens>();
         services.AddSingleton(builder.Configuration.GetSection(DriveOptions.SectionName).Get<DriveOptions>() ?? new DriveOptions());
         services.AddHostedService<PendingUploadCleanup>();
         services.AddSingleton<TrashRetentionJob>();

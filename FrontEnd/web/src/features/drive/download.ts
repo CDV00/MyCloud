@@ -11,6 +11,11 @@ export function folderPath(item: Pick<DriveItem, 'id' | 'isRoot'>) {
  */
 export async function downloadItem(itemId: string, versionId?: string): Promise<void> {
   const { url } = await getDownloadUrl(itemId, { versionId });
+  openDownload(url);
+}
+
+/** Mở presigned URL tải về (Content-Disposition: attachment ⇒ trình duyệt tải, không rời trang). */
+export function openDownload(url: string) {
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.rel = 'noopener';

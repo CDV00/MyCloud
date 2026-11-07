@@ -4,6 +4,7 @@ using Identity.Api.Data;
 using Identity.Api.Keys;
 using Identity.Api.Services;
 using Identity.Api.Tokens;
+using Identity.Api.Users;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MyCloud.BuildingBlocks.Grpc;
@@ -34,6 +35,8 @@ builder.Services
 
 builder.AddTokenServices();
 builder.Services.AddOptions<ServiceClientOptions>().Bind(builder.Configuration.GetSection(ServiceClientOptions.SectionName));
+builder.Services.AddOptions<AdminOptions>().Bind(builder.Configuration.GetSection(AdminOptions.SectionName));
+builder.Services.AddSingleton<AdminBootstrap>();
 builder.Services.AddGrpcServerDefaults();
 builder.Services.AddValidatorsFromAssemblyContaining<AuthEndpoints>(includeInternalTypes: true);
 

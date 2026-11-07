@@ -33,6 +33,12 @@ public sealed class PendingUpload : Entity<Guid>
 
     public Guid? CompletedItemId { get; private set; }
 
+    /// <summary>Phiên bản mới từ trình sửa (Edit) hay tải tệp lên (Upload) — ghi vào lịch sử chỉnh sửa.</summary>
+    public VersionSource Source { get; private set; } = VersionSource.Upload;
+
+    /// <summary>Ghi chú thay đổi gửi kèm khi bắt đầu lưu phiên bản mới.</summary>
+    public string? Note { get; private set; }
+
     public static PendingUpload Start(
         Guid sessionId, Guid ownerId, DriveItem parent, ItemName name, long sizeBytes, string mimeType, DateTimeOffset now, DateTimeOffset expiresAt)
     {
@@ -61,7 +67,8 @@ public sealed class PendingUpload : Entity<Guid>
 
     /// <summary>Upload nội dung mới cho <paramref name="file"/>; khi hoàn tất thành version kế tiếp của nó.</summary>
     public static PendingUpload StartNewVersion(
-        Guid sessionId, Guid ownerId, DriveItem file, long sizeBytes, string mimeType, DateTimeOffset now, DateTimeOffset expiresAt)
+        Guid sessionId, Guid ownerId, DriveItem file, long sizeBytes, string mimeType, DateTimeOffset now, DateTimeOffset expiresAt,
+        VersionSource source = VersionSource.Upload, string? note = null)
     {
         if (file.IsFolder)
         {
@@ -84,6 +91,8 @@ public sealed class PendingUpload : Entity<Guid>
             CreatedAt = now,
             ExpiresAt = expiresAt,
             TargetItemId = file.Id,
+            Source = source == VersionSource.Edit ? VersionSource.Edit : VersionSource.Upload,
+            Note = FileVersion.NormalizeNote(note),
         };
     }
 

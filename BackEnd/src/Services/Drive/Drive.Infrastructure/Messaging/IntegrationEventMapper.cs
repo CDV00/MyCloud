@@ -36,7 +36,8 @@ internal static class IntegrationEventMapper
             ItemRestoredDomainEvent => new ItemRestored(item.Id, item.OwnerId, item.ParentId!.Value, item.AncestorIds, item.Name, item.Revision, by),
             FileVersionsDeletedDomainEvent e => new FileVersionsDeleted(item.Id, item.OwnerId, e.VersionIds, e.BlobIds, item.Revision),
             FileVersionAddedDomainEvent e when item.Versions.SingleOrDefault(v => v.Id == e.VersionId) is { } v => new FileVersionAdded(
-                item.Id, item.OwnerId, v.Id, v.VersionNo, v.BlobId, v.SizeBytes, v.MimeType, item.Revision, v.CreatedBy),
+                item.Id, item.OwnerId, v.Id, v.VersionNo, v.BlobId, v.SizeBytes, v.MimeType, item.Revision, v.CreatedBy,
+                v.Source.ToString().ToLowerInvariant(), v.RestoredFromVersionNo),
             _ => null,
         };
     }

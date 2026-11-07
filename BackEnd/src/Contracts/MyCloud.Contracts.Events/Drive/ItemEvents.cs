@@ -32,7 +32,10 @@ public sealed record ItemMoved(
     long Revision,
     Guid By) : IntegrationEvent;
 
-/// <summary>Nội dung mới của file — Storage "claim" blob (ADR-006); Media tạo thumbnail (Phase 5).</summary>
+/// <summary>
+/// Nội dung mới của file — Storage "claim" blob (ADR-006); Media tạo thumbnail (Phase 5); Search ghi lịch sử.
+/// <c>Source</c>: upload | edit (trình sửa) | restore (khôi phục <c>RestoredFromVersionNo</c>) | copy.
+/// </summary>
 public sealed record FileVersionAdded(
     Guid ItemId,
     Guid OwnerId,
@@ -42,7 +45,9 @@ public sealed record FileVersionAdded(
     long SizeBytes,
     string MimeType,
     long Revision,
-    Guid By) : IntegrationEvent;
+    Guid By,
+    string Source = "upload",
+    int? RestoredFromVersionNo = null) : IntegrationEvent;
 
 /// <summary>
 /// Item (và cả cây con nếu là thư mục) vào thùng rác. Chỉ mang item gốc của nhóm: consumer suy ra các item con bị ẩn
@@ -80,3 +85,25 @@ public sealed record ItemAccessed(Guid ItemId, Guid OwnerId, Guid UserId, string
     public const string Open = "open";
     public const string Download = "download";
 }
+
+/// <summary>
+/// Tin nhắn mới trong trao đổi về một tệp (ADR-017). Notification báo cho <c>Recipients</c> (chủ tệp, người tạo phiên bản
+/// được góp ý, người trong luồng, người được nhắc tên — trừ người viết) và đẩy tới "phòng" realtime của tệp.
+/// </summary>
+public sealed record ItemCommentPosted(
+    Guid CommentId,
+    Guid ItemId,
+    Guid OwnerId,
+    string ItemName,
+    Guid? VersionId,
+    int? VersionNo,
+    Guid? ParentId,
+    Guid AuthorId,
+    string AuthorName,
+    string Excerpt,
+    IReadOnlyList<Guid> Recipients,
+    IReadOnlyList<Guid> Mentions) : IntegrationEvent;
+
+/// <summary>Lịch sử / trao đổi của tệp đổi (sửa, xoá, đánh dấu đã xử lý tin nhắn; sửa ghi chú phiên bản) — chỉ để làm mới
+/// màn hình của người đang xem tệp.</summary>
+public sealed record ItemHistoryChanged(Guid ItemId, Guid OwnerId, string Kind) : IntegrationEvent;

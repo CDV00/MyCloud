@@ -4,10 +4,12 @@ using MyCloud.BuildingBlocks.Grpc;
 using MyCloud.BuildingBlocks.Messaging;
 using MyCloud.BuildingBlocks.Web;
 using Storage.Api;
+using Storage.Api.Archives;
 using Storage.Api.Data;
 using Storage.Api.Grpc;
 using Storage.Api.Maintenance;
 using Storage.Api.ObjectStorage;
+using Storage.Api.Thumbnails;
 using Storage.Api.Uploads;
 
 // Storage service: byte của file (S3/MinIO) và dung lượng — docs/03 §4, ADR-002, ADR-006, ADR-011.
@@ -38,6 +40,11 @@ builder.Services.AddSingleton<QuotaStore>();
 builder.Services.AddScoped<QuotaAlerts>();
 builder.Services.AddScoped<UploadService>();
 builder.Services.AddScoped<Storage.Api.Messaging.BlobReclaimer>();
+builder.Services.AddScoped<ThumbnailStore>();
+builder.Services.AddScoped<ArchiveService>();
+builder.Services.AddSingleton<ArchiveSignal>();
+builder.Services.AddSingleton<ArchiveWorker>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ArchiveWorker>());
 builder.Services.AddSingleton<StorageMaintenance>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<StorageMaintenance>());
 

@@ -239,14 +239,89 @@ chia sẻ (và ẩn khi chủ sở hữu xoá), lọc `owner=me|others`.
 
 ---
 
-## Phase 5 — Media & Trải nghiệm (≈ 2–3 tuần)
+## Phase 5 — Media & Trải nghiệm ✅
 
-- [ ] Media Worker: thumbnail ảnh, khung hình video (ffmpeg), trang đầu PDF; `ThumbnailGenerated` → Drive.
-- [ ] Xem trước trên web: ảnh (lightbox), PDF (PDF.js), video/audio (presigned `inline`), text/code.
-- [ ] Tải nhiều item / cả thư mục dạng zip (job nền stream vào MinIO, thông báo khi xong).
-- [ ] Upload cả thư mục (giữ cấu trúc), xử lý xung đột tên hàng loạt.
-- [ ] Trang "Bộ nhớ": dung lượng theo loại file, file lớn nhất.
-- [ ] (Tuỳ chọn) ClamAV + `MalwareDetected`.
+**Media Worker** ([ADR-015](08-adr.md#adr-015))
+- [x] `FileVersionAdded` → thumbnail WebP 256 / 1024 px: ảnh (SkiaSharp, lấy mẫu khi giải mã, xoay theo EXIF, chặn ảnh
+      > 120 MP), trang đầu PDF (PDFium), khung hình video (ffmpeg — tuỳ chọn, `Media:FfmpegPath`).
+- [x] Đọc / ghi qua gRPC của Storage bằng định danh service `media` (không giữ khoá object storage);
+      `ThumbnailGenerated` → Drive đánh dấu version hiện tại có thumbnail.
+- [x] Giới hạn: kích thước file nguồn, số file xử lý đồng thời, timeout ffmpeg; nội dung hỏng ⇒ bỏ qua, không retry.
+
+**Storage**
+- [x] Thumbnail theo blob (`t/{blobId}/{size}.webp`), xoá cùng blob, URL có cache; gRPC `PutThumbnail`, `GetThumbnailUrls`
+      (chỉ service).
+- [x] Tệp zip: gRPC `CreateArchive` → hàng đợi `archives` → worker stream vào S3 multipart; `ArchiveReady` / `ArchiveFailed`;
+      REST `GET /archives/{id}`, `POST /archives/{id}/download-url`; hết hạn sau 24 h, không tính quota.
+- [x] Xem inline an toàn: chỉ ảnh / video / audio / PDF giữ kiểu; văn bản ⇒ `text/plain`; còn lại chỉ tải về.
+
+**Drive**: `hasThumbnail` trong item, `POST /thumbnails` (theo lô, cả qua link công khai), `POST /archives`,
+`POST /folders/tree` (tạo cả cây, gộp / đổi tên khi trùng), `POST /items/{id}/name-conflicts`.
+
+**Search**: `GET /usage` (dung lượng theo loại file + thùng rác), `GET /largest` (file lớn nhất).
+
+**Notification**: thông báo realtime khi tệp zip sẵn sàng / thất bại (bấm để tải).
+
+**Frontend**
+- [x] Thumbnail trong dạng lưới; xem trước toàn màn hình: ảnh, video / audio, PDF (PDF.js, tải lười), văn bản / mã nguồn;
+      ← / → chuyển file.
+- [x] Tải xuống thư mục / nhiều mục dạng zip (panel tiến trình, tự tải khi xong).
+- [x] Tải thư mục lên (nút "Mới" và kéo thả, giữ cấu trúc, cả thư mục rỗng); trùng tên ⇒ hỏi một lần: giữ cả hai /
+      thay thế + gộp / bỏ qua.
+- [x] Trang "Bộ nhớ": dung lượng theo loại, thùng rác, phiên bản cũ; danh sách file lớn nhất.
+
+**Test**: Media.Worker.Tests (mới, 23 — giải mã / render thật, hướng EXIF, PDF, consumer qua harness); Storage (+8, MinIO
+thật: thumbnail, zip tiếng Việt / thư mục rỗng / blob đã xoá, hết hạn, ép `text/plain`); Drive (+8); Notification (+1);
+frontend (+21: xem trước, kế hoạch tải thư mục, tải zip).
+
+**Lệch so với kế hoạch**
+- Thumbnail gắn với blob, Media không ghi thẳng MinIO (ADR-015); key `t/{blobId}/{size}.webp` thay vì `thumbnails/{itemId}/...`.
+- Zip do Storage nén (hàng đợi PostgreSQL), không phải Drive / Media; khách mở link công khai chưa tải được thư mục dạng zip.
+- Thumbnail chỉ hiện ở dạng lưới (danh sách và kết quả tìm kiếm vẫn dùng biểu tượng).
+- Video cần ffmpeg trên máy chạy Media Worker (máy dev hiện chưa có ⇒ video chưa có thumbnail).
+- Chưa làm ClamAV / `MalwareDetected` (tuỳ chọn) — chuyển sang Phase 6.
+
+---
+
+## Bổ sung sau Phase 5 — Tài liệu Office & Quản trị ✅
+
+**Đọc / tạo / sửa tệp** ([ADR-016](08-adr.md#adr-016))
+- [x] Xem trước Word (.docx — docx-preview), Excel (.xlsx / .xlsm / .xls — ExcelJS, SheetJS cho .xls cũ; nhận định dạng theo nội dung, chuẩn hoá tệp OpenXML SDK có tiền tố namespace / thiếu địa chỉ ô), CSV / TSV, cùng văn bản,
+      PDF, ảnh, video đã có từ Phase 5.
+- [x] Tạo mới: tài liệu Word, bảng tính Excel, tệp văn bản, Markdown (nút "Mới") ⇒ mở trình sửa ngay.
+- [x] Trình sửa toàn màn hình, lưu = phiên bản mới (Ctrl+S), cảnh báo khi đóng chưa lưu, phát hiện người khác vừa lưu (412):
+      văn bản / mã / Markdown; CSV và Excel (lưới ô, công thức, thêm trang tính); Word (tiêu đề, định dạng chữ, danh sách,
+      bảng, ảnh, liên kết).
+- [x] Drive: `POST /uploads` nhận `expectedRevision` cho phiên bản mới.
+- [x] Lịch sử chỉnh sửa: mỗi phiên bản ghi người tạo và cách tạo (`file_versions.source`: tải lên / sửa trong trình duyệt /
+      khôi phục từ bản N / sao chép); tab "Lịch sử chỉnh sửa" xem trực tiếp, tải, khôi phục, xoá từng phiên bản; nhật ký
+      hoạt động ghi "đã chỉnh sửa" / "đã khôi phục về phiên bản N" (event `FileVersionAdded` mang `Source`).
+
+**Lịch sử & trao đổi — nhiều người cùng làm trên một tệp** ([ADR-017](08-adr.md#adr-017))
+- [x] Ghi chú lý do cho mỗi phiên bản: nhập khi lưu trong trình sửa ("Lưu kèm ghi chú", Ctrl+S lưu nhanh), khi khôi phục bản
+      cũ; sửa lại sau (người tạo phiên bản / chủ tệp).
+- [x] So sánh hai phiên bản ngay trong trình duyệt: văn bản / CSV theo dòng, Word theo đoạn, Excel theo ô + trang tính.
+- [x] Trao đổi kiểu chat cạnh tệp: luồng + trả lời, góp ý gắn với một phiên bản, @nhắc tên (chỉ người có quyền xem), sửa /
+      xoá / đánh dấu đã xử lý; Commenter trở lên được viết.
+- [x] Realtime: phòng theo tệp trên hub SignalR (vé HMAC do Drive cấp) — tin nhắn, phiên bản mới, ghi chú hiện ngay; ai đang
+      xem / đang sửa (cảnh báo trong trình sửa khi người khác cũng đang sửa).
+- [x] Thông báo loại `comment` (chuông + realtime) cho chủ tệp, người tạo phiên bản được góp ý, người trong luồng, người được
+      nhắc; bấm vào mở `/files/{id}?panel=history`.
+- [x] Bảng "Lịch sử & trao đổi" ở xem trước, trình sửa và bảng chi tiết (tab Trao đổi / Phiên bản).
+
+**Quản trị người dùng**
+- [x] Identity: `is_admin`, `disabled_at`, `last_login_at`; claim `role = admin`; `Identity:AdminEmails`; tài khoản bị khoá
+      không đăng nhập / refresh được; REST `/api/v1/admin/summary|users|users/{id}`.
+- [x] Storage: REST `/api/v1/admin/summary|quotas|quotas/{userId}` (xem / đổi hạn mức).
+- [x] BuildingBlocks: policy `admin`.
+- [x] Web: trang "Quản trị" (chỉ quản trị viên thấy) — thống kê, tìm kiếm / lọc, dung lượng từng người, khoá / mở khoá,
+      cấp / thu quyền, đổi hạn mức.
+
+**Test**: Identity (+3), Storage (+2), Drive (lịch sử chỉnh sửa, 412, ghi chú phiên bản, trao đổi / quyền / người nhận, vé phòng), Notification (phòng realtime qua hub), frontend (so sánh văn bản / bảng tính, CSV, lưới ô, Excel giữ định dạng khi sửa, Word lưu rồi đọc
+lại, nhận diện loại tệp).
+
+**Chưa làm**: sửa PowerPoint; cùng sửa đồng thời từng ký tự (CRDT) — hiện có cảnh báo + phát hiện xung đột; so sánh PDF / ảnh; tính công thức Excel ngay trong trình duyệt
+(Excel tính khi mở tệp); audit log lưu DB cho thao tác quản trị; xoá hẳn tài khoản kèm dữ liệu.
 
 ---
 

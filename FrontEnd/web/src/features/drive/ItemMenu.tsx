@@ -5,6 +5,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import DownloadIcon from '@mui/icons-material/Download';
 import DriveFileMoveOutlinedIcon from '@mui/icons-material/DriveFileMoveOutlined';
 import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutline';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import HistoryIcon from '@mui/icons-material/History';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
@@ -13,9 +14,11 @@ import RestoreFromTrashIcon from '@mui/icons-material/RestoreFromTrash';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import StarIcon from '@mui/icons-material/Star';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import { Divider, IconButton, ListItemIcon, Menu, MenuItem, Paper, Tooltip, Typography } from '@mui/material';
 import type { ReactNode } from 'react';
 import { canEdit, canManage, type DriveItem } from '../../api/drive';
+import { editKind } from '../preview/previewKind';
 import type { ItemActions } from './useItemActions';
 
 export interface MenuState {
@@ -76,9 +79,15 @@ export function ItemMenu({
       entries.push(
         item.kind === 'folder'
           ? entry(<FolderOpenIcon fontSize="small" />, 'Mở', () => actions.open(item))
-          : entry(<DownloadIcon fontSize="small" />, 'Tải xuống', () => actions.download(item)),
+          : entry(<VisibilityOutlinedIcon fontSize="small" />, 'Xem trước', () => actions.open(item)),
       );
+      if (mode !== 'trash' && item.kind === 'file' && canEdit(item) && editKind(item)) {
+        entries.push(entry(<EditOutlinedIcon fontSize="small" />, 'Chỉnh sửa', () => actions.edit(item)));
+      }
     }
+
+    // Thư mục / nhiều mục: tệp zip tạo trong nền (Phase 5).
+    entries.push(entry(<DownloadIcon fontSize="small" />, 'Tải xuống', () => actions.downloadMany(targets)));
 
     if (mode === 'view') {
       if (single) {
@@ -128,7 +137,7 @@ export function ItemMenu({
         );
         if (item.kind === 'file') {
           entries.push(
-            entry(<HistoryIcon fontSize="small" />, 'Quản lý phiên bản', () =>
+            entry(<HistoryIcon fontSize="small" />, 'Lịch sử & trao đổi', () =>
               actions.details(item, 'versions'),
             ),
           );

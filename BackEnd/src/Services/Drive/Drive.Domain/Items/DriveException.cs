@@ -130,6 +130,16 @@ public static class DriveException
     }
 
     /// <summary>Kiểm tra trước khi sao chép: tổng dung lượng các file vượt dung lượng còn trống.</summary>
+    public sealed class ArchiveTooLarge(string reason) : LimitExceededException(reason)
+    {
+        public override string Code => "DRIVE.ARCHIVE_TOO_LARGE";
+    }
+
+    public sealed class TooManyFolders(int max) : LimitExceededException($"At most {max} folders can be created in one request.")
+    {
+        public override string Code => "DRIVE.TOO_MANY_FOLDERS";
+    }
+
     public sealed class QuotaExceeded() : LimitExceededException("Not enough storage space to copy these files.")
     {
         public override string Code => "STORAGE.QUOTA_EXCEEDED";

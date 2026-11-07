@@ -48,6 +48,10 @@ Không chứa logic nghiệp vụ, không gọi gRPC.
 
 Phase sau: xác minh email, quên mật khẩu, đăng nhập Google (OIDC), 2FA TOTP.
 
+### REST quản trị (chỉ quản trị viên — claim `role = admin`, [ADR-016](08-adr.md#adr-016))
+`GET /admin/summary`, `GET /admin/users?q&status&page&pageSize`, `PATCH /admin/users/{id}` `{isAdmin?, disabled?}`.
+Quản trị viên đầu tiên: cấu hình `Identity:AdminEmails`. Dung lượng: Storage `GET /admin/quotas?userIds=`, `PUT /admin/quotas/{userId}`.
+
 ### gRPC (`identity.v1.UserService`)
 `GetUser`, `BatchGetUsers`, `FindUserByEmail` — dùng bởi Sharing.
 
@@ -142,7 +146,10 @@ index (parent_id, kind, name_key)          -- liệt kê thư mục: folder trư
 index (path text_pattern_ops)              -- truy vấn cây con: WHERE path LIKE '/a/b/%'
 index (owner_id, trashed_at)               -- thùng rác
 
-file_versions(id, item_id, version_no, blob_id, size_bytes, sha256, mime_type, created_at, created_by)
+file_versions(id, item_id, version_no, blob_id, size_bytes, sha256, mime_type, created_at, created_by,
+              source, restored_from_version_no, note)   -- ADR-016 / ADR-017
+item_comments(id, item_id, version_id, parent_id, author_id, body, mentions, created_at, edited_at, deleted_at,
+              resolved_at, resolved_by)                 -- trao đổi theo tệp, ADR-017
   unique (item_id, version_no)
 stars(user_id, item_id, created_at) pk(user_id, item_id)
 pending_uploads(upload_session_id pk, user_id, parent_id, name, target_item_id, expires_at)
@@ -174,6 +181,10 @@ Di chuyển cây con = **1 câu UPDATE** trên `path` (`SET path = :new || subst
 | GET | `/items/{id}/thumbnail?size=256` | 302 → presigned URL thumbnail |
 | GET | `/items/{id}/versions`, POST `/items/{id}/versions/{vid}:restore` | Version |
 | POST | `/archives` | `{itemIds}` → job tạo zip (Phase 5), trả về qua notification |
+| GET / POST | `/items/{id}/comments` | Trao đổi của tệp; POST `{body, versionId?, parentId?, mentions?}` (Commenter+) — [ADR-017](08-adr.md#adr-017) |
+| PATCH / DELETE | `/items/{id}/comments/{cid}` | Sửa (người viết) / xoá mềm (người viết hoặc chủ tệp); POST `.../resolve` `{resolved}` |
+| PATCH | `/items/{id}/versions/{vid}` | `{note}` — ghi chú phiên bản (người tạo phiên bản hoặc chủ tệp) |
+| POST | `/items/{id}/live` | Vé vào phòng realtime của tệp `{token, expiresAt}` (Viewer+) |
 
 > Đã triển khai (Phase 2–3) với đường dẫn dạng `/items/{id}/move`, `/copy`, `/trash`, `/restore`, `/download-url` (body `{inline, versionId}`), `/versions/{vid}/restore`, `DELETE /items/{id}/versions/{vid}`, `POST /uploads` nhận `targetItemId` — route ASP.NET không hỗ trợ tốt kiểu `:action`.
 
@@ -187,7 +198,7 @@ Di chuyển cây con = **1 câu UPDATE** trên `path` (`SET path = :new || subst
 - `sharing.v1.AuthorizationService`: Check / BatchCheck khi người gọi **không phải** chủ sở hữu (fast-path: `owner_id == currentUser` ⇒ không cần gọi).
 
 ### Event
-- Publish (qua outbox): `ItemCreated`, `ItemRenamed`, `ItemMoved`, `ItemTrashed`, `ItemRestored`, `ItemsPurged` (kèm danh sách `blobIds`), `FileVersionAdded`, `ItemAccessed` (mở/tải — cho "Gần đây", gộp tối đa 1 event/item/user/5 phút).
+- Publish (qua outbox): `ItemCreated`, `ItemRenamed`, `ItemMoved`, `ItemTrashed`, `ItemRestored`, `ItemsPurged` (kèm danh sách `blobIds`), `FileVersionAdded`, `ItemCommentPosted`, `ItemHistoryChanged`, `ItemAccessed` (mở/tải — cho "Gần đây", gộp tối đa 1 event/item/user/5 phút).
 - Consume: `UserRegistered` → tạo root; `ThumbnailGenerated` → `HasThumbnail = true`; `MalwareDetected` → chặn tải.
 
 ### Job nền
@@ -334,7 +345,8 @@ Nâng cấp sau: tìm theo nội dung file (Apache Tika trích text → OpenSear
 
 ## 7. Notification Service
 
-- Consume: `UserRegistered` (lưu email/tên để gửi thư, gửi email chào mừng), `ItemShared` (email + in-app), `QuotaThresholdReached`, `ArchiveReady`.
+- Consume: `UserRegistered` (lưu email/tên để gửi thư, gửi email chào mừng), `ItemShared` (email + in-app), `QuotaThresholdReached`, `ArchiveReady`, `ItemCommentPosted` (thông báo loại `comment`).
+- Phòng realtime theo tệp ([ADR-017](08-adr.md#adr-017)): hub `Watch(ticket)` / `Unwatch` / `Presence(itemId, mode)`, nhóm `item:{id}`, đẩy `item-activity` từ `ItemCommentPosted`, `ItemHistoryChanged`, `FileVersionAdded` và `presence`.
 - REST: `GET /notifications?unreadOnly`, `POST /notifications/{id}:read`, `POST /notifications:readAll`.
 - Realtime: SignalR hub `/hubs/notifications` (Gateway proxy WebSocket; token qua query `access_token` chỉ cho route hub). Scale-out bằng Redis backplane.
 - Email: SMTP (dev: **Mailpit**), template Razor/Scriban, retry qua MassTransit.
@@ -343,6 +355,10 @@ Nâng cấp sau: tìm theo nội dung file (Apache Tika trích text → OpenSear
 ---
 
 ## 8. Media Worker
+
+> **Đã triển khai khác bản thiết kế dưới đây** ([ADR-015](08-adr.md#adr-015)): Media không truy cập MinIO trực tiếp mà
+> gọi Storage bằng định danh service (`GetDownloadUrl` nội bộ để đọc, `PutThumbnail` để ghi); thumbnail gắn với blob
+> (`t/{blobId}/{size}.webp`). Tệp zip do Storage nén (hàng đợi `archives`), REST `/api/storage/v1/archives/{id}`.
 
 - Consume `FileVersionAdded` với `mimeType` là ảnh / video / PDF.
 - Tải object nội bộ từ MinIO → sinh thumbnail WebP 256 px và 1024 px (SkiaSharp hoặc NetVips cho ảnh; `ffmpeg` cho khung hình video; PDFium cho trang đầu PDF) → ghi `thumbnails/{itemId}/{versionId}/{size}.webp` → publish `ThumbnailGenerated`.

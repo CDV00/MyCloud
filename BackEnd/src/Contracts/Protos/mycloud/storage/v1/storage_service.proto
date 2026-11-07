@@ -25,6 +25,15 @@ service StorageService {
   // Sao chép phía server (sao chép file, khôi phục version cũ thành version mới). Blob mới ở trạng thái Uploaded,
   // tính quota của người gọi; Drive "claim" bằng FileVersionAdded như upload thường, không claim ⇒ GC sau 24 h.
   rpc CopyBlob(CopyBlobRequest) returns (CopyBlobResponse);
+
+  // ----- Phase 5 (ADR-015) — chỉ định danh service -----
+  // Media Worker lưu thumbnail (WebP) của một blob: t/{blobId}/{size}.webp. Không tính quota; xoá cùng blob.
+  rpc PutThumbnail(PutThumbnailRequest) returns (PutThumbnailResponse);
+  // Drive ký URL thumbnail cho các item mà người gọi được xem (Drive đã kiểm tra quyền và biết thumbnail đã có).
+  rpc GetThumbnailUrls(GetThumbnailUrlsRequest) returns (GetThumbnailUrlsResponse);
+  // Drive yêu cầu tạo tệp zip từ danh sách entry đã kiểm tra quyền; Storage nén trong job nền, publish ArchiveReady /
+  // ArchiveFailed. Người dùng xem trạng thái / tải qua REST của Storage.
+  rpc CreateArchive(CreateArchiveRequest) returns (CreateArchiveResponse);
 }
 
 message PresignedPart {
@@ -97,6 +106,8 @@ message GetDownloadUrlRequest {
   // true: xem trực tiếp trong trình duyệt; false: tải về.
   bool inline = 5;
   string public_base_url = 6;
+  // Chỉ service (Media Worker): ký cho endpoint nội bộ của object storage thay vì gốc URL công khai.
+  bool internal = 7;
 }
 
 message GetDownloadUrlResponse {
@@ -125,4 +136,50 @@ message CopyBlobRequest {
 message CopyBlobResponse {
   string blob_id = 1;
   int64 size_bytes = 2;
+}
+
+message PutThumbnailRequest {
+  string blob_id = 1;
+  // Cạnh dài tối đa (px): 256 | 1024.
+  int32 size = 2;
+  // image/webp.
+  bytes content = 3;
+}
+
+message PutThumbnailResponse {
+  // false: blob không còn (đã xoá) — bỏ qua thumbnail.
+  bool stored = 1;
+}
+
+message GetThumbnailUrlsRequest {
+  repeated string blob_ids = 1;
+  int32 size = 2;
+  string public_base_url = 3;
+}
+
+message GetThumbnailUrlsResponse {
+  // Cùng thứ tự với blob_ids.
+  repeated string urls = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message ArchiveEntry {
+  // Đường dẫn trong zip, phân tách bằng "/" (vd "Ảnh/2024/a.jpg"); thư mục kết thúc bằng "/".
+  string path = 1;
+  // Rỗng với thư mục.
+  string blob_id = 2;
+  int64 size_bytes = 3;
+  string mime_type = 4;
+}
+
+message CreateArchiveRequest {
+  // Người yêu cầu — chủ của tệp zip (chỉ người này tải được, nhận thông báo).
+  string user_id = 1;
+  // Tên tệp zip (vd "Dự án.zip").
+  string name = 2;
+  repeated ArchiveEntry entries = 3;
+}
+
+message CreateArchiveResponse {
+  string archive_id = 1;
 }

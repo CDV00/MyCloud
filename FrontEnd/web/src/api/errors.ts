@@ -5,6 +5,9 @@ const messages: Record<string, string> = {
   'IDENTITY.EMAIL_TAKEN': 'Email này đã được đăng ký.',
   'IDENTITY.PASSWORD_MISMATCH': 'Mật khẩu hiện tại không đúng.',
   'IDENTITY.INVALID_REFRESH_TOKEN': 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+  'IDENTITY.ACCOUNT_DISABLED': 'Tài khoản đã bị quản trị viên khoá. Hãy liên hệ quản trị viên.',
+  'IDENTITY.CANNOT_CHANGE_SELF': 'Bạn không thể khoá hoặc bỏ quyền quản trị của chính mình.',
+  'IDENTITY.USER_NOT_FOUND': 'Người dùng không tồn tại.',
   'DRIVE.NAME_CONFLICT': 'Thư mục này đã có mục cùng tên.',
   'DRIVE.INVALID_NAME':
     'Tên không hợp lệ (không được chứa dấu / hoặc dấu gạch chéo ngược, tối đa 255 ký tự).',

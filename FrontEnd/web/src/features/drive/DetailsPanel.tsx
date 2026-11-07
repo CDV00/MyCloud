@@ -1,13 +1,7 @@
 import CloseIcon from '@mui/icons-material/Close';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
-import DownloadIcon from '@mui/icons-material/Download';
-import RestoreIcon from '@mui/icons-material/Restore';
-import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
 import {
   Alert,
   Box,
-  Button,
-  Chip,
   CircularProgress,
   Drawer,
   IconButton,
@@ -21,18 +15,18 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link as RouterLink } from 'react-router';
-import { canEdit, deleteVersion, restoreVersion, type DriveItem, type FileVersion } from '../../api/drive';
+import type { DriveItem } from '../../api/drive';
 import { useDisplayName, useUsers } from '../people/useUsers';
 import { toUserMessage } from '../../api/errors';
 import { useAuth } from '../../auth/authContext';
 import { formatModified, formatSize } from '../../lib/format';
 import { describeActivity, describeType, formatDateTime } from './describe';
 import { folderPath } from './download';
+import { FileHistoryPanel } from '../collab/FileHistoryPanel';
 import { FileIcon } from './FileIcon';
 import type { ItemActions } from './useItemActions';
-import { refreshDrive, useActivity, useItem, useVersions } from './queries';
+import { useActivity, useItem } from './queries';
 
 export type DetailsTab = 'details' | 'activity' | 'versions';
 
@@ -70,15 +64,23 @@ export function DetailsPanel({ itemId, tab, onTabChange, onClose, actions }: Pro
       <Tabs value={activeTab} onChange={(_, value: DetailsTab) => onTabChange(value)} sx={{ px: 1 }}>
         <Tab value="details" label="Chi tiết" />
         <Tab value="activity" label="Hoạt động" />
-        {data?.kind === 'file' && <Tab value="versions" label="Phiên bản" />}
+        {data?.kind === 'file' && <Tab value="versions" label="Lịch sử & trao đổi" />}
       </Tabs>
 
-      <Box sx={{ p: 2, overflowY: 'auto', flexGrow: 1 }}>
+      {data && activeTab === 'versions' && (
+        <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+          <FileHistoryPanel
+            item={data}
+            initialTab="versions"
+            onUploadVersion={() => actions.uploadVersion(data)}
+          />
+        </Box>
+      )}
+      <Box sx={{ p: 2, overflowY: 'auto', flexGrow: activeTab === 'versions' ? 0 : 1 }}>
         {item.isError && <Alert severity="error">{toUserMessage(item.error)}</Alert>}
         {item.isPending && itemId && <CircularProgress size={24} />}
         {data && activeTab === 'details' && <DetailsTabContent item={data} />}
         {data && activeTab === 'activity' && <ActivityTabContent item={data} />}
-        {data && activeTab === 'versions' && <VersionsTabContent item={data} actions={actions} />}
       </Box>
     </Drawer>
   );
@@ -171,97 +173,5 @@ function ActivityTabContent({ item }: { item: DriveItem }) {
         Hoạt động có thể hiển thị chậm vài giây sau khi thay đổi.
       </Typography>
     </>
-  );
-}
-
-function VersionsTabContent({ item, actions }: { item: DriveItem; actions: Props['actions'] }) {
-  const queryClient = useQueryClient();
-  const versions = useVersions(item.id);
-  const restore = useMutation({
-    mutationFn: (v: FileVersion) => restoreVersion(item.id, v.id),
-    onSettled: () => refreshDrive(queryClient),
-  });
-  const remove = useMutation({
-    mutationFn: (v: FileVersion) => deleteVersion(item.id, v.id),
-    onSettled: () => refreshDrive(queryClient),
-  });
-  const error = restore.error ?? remove.error;
-  const busy = restore.isPending || remove.isPending;
-
-  return (
-    <Stack spacing={2}>
-      <Button
-        variant="outlined"
-        startIcon={<UploadFileOutlinedIcon />}
-        disabled={item.trashedAt !== null || !canEdit(item)}
-        onClick={() => actions.uploadVersion(item)}
-        sx={{ alignSelf: 'flex-start' }}
-      >
-        Tải lên phiên bản mới
-      </Button>
-      <Typography variant="body2" color="text.secondary">
-        Khôi phục một phiên bản cũ sẽ tạo phiên bản mới với nội dung đó. Các phiên bản đều được tính vào dung
-        lượng.
-      </Typography>
-      {error && <Alert severity="error">{toUserMessage(error)}</Alert>}
-      {versions.isPending && <CircularProgress size={24} />}
-      {versions.data && (
-        <List dense disablePadding>
-          {versions.data.map((v) => (
-            <ListItem
-              key={v.id}
-              disableGutters
-              secondaryAction={
-                <Stack direction="row">
-                  <Tooltip title="Tải xuống phiên bản này">
-                    <IconButton
-                      size="small"
-                      onClick={() => actions.download(item, v.id)}
-                      aria-label={`Tải xuống phiên bản ${v.versionNo}`}
-                    >
-                      <DownloadIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  {!v.isCurrent && item.trashedAt === null && canEdit(item) && (
-                    <>
-                      <Tooltip title="Khôi phục phiên bản này">
-                        <IconButton
-                          size="small"
-                          disabled={busy}
-                          onClick={() => restore.mutate(v)}
-                          aria-label={`Khôi phục phiên bản ${v.versionNo}`}
-                        >
-                          <RestoreIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Xoá phiên bản này">
-                        <IconButton
-                          size="small"
-                          disabled={busy}
-                          onClick={() => remove.mutate(v)}
-                          aria-label={`Xoá phiên bản ${v.versionNo}`}
-                        >
-                          <DeleteOutlineIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </>
-                  )}
-                </Stack>
-              }
-            >
-              <ListItemText
-                primary={
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                    <span>Phiên bản {v.versionNo}</span>
-                    {v.isCurrent && <Chip label="Hiện tại" size="small" color="primary" variant="outlined" />}
-                  </Stack>
-                }
-                secondary={`${formatDateTime(v.createdAt)} · ${formatSize(v.sizeBytes)}`}
-              />
-            </ListItem>
-          ))}
-        </List>
-      )}
-    </Stack>
   );
 }

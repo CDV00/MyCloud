@@ -1,4 +1,9 @@
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined';
+import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
+import GridOnOutlinedIcon from '@mui/icons-material/GridOnOutlined';
+import TextSnippetOutlinedIcon from '@mui/icons-material/TextSnippetOutlined';
 import CloudIcon from '@mui/icons-material/Cloud';
 import CloudQueueIcon from '@mui/icons-material/CloudQueue';
 import CreateNewFolderOutlinedIcon from '@mui/icons-material/CreateNewFolderOutlined';
@@ -8,6 +13,7 @@ import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import StorageIcon from '@mui/icons-material/Storage';
+import DriveFolderUploadOutlinedIcon from '@mui/icons-material/DriveFolderUploadOutlined';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
 import AddIcon from '@mui/icons-material/Add';
 import {
@@ -36,8 +42,15 @@ import { QuotaBar } from '../features/drive/QuotaBar';
 import { useItem, useRoot } from '../features/drive/queries';
 import { canEdit } from '../api/drive';
 import { UploadPanel } from '../features/upload/UploadPanel';
-import { uploadStore } from '../features/upload/uploadStore';
+import { ArchivePanel } from '../features/archive/ArchivePanel';
+import { UploadConflictDialog } from '../features/upload/UploadConflictDialog';
+import { fromFileList, uploadPlanner } from '../features/upload/uploadPlanner';
+import { useAuth } from '../auth/authContext';
+import { CreateFileDialog } from '../features/office/CreateFileDialog';
+import { NEW_FILE_KINDS, type NewFileKind } from '../features/office/newFileKinds';
+import { EditorHost } from '../features/office/EditorHost';
 import { UserMenu } from './UserMenu';
+import { Divider } from '@mui/material';
 
 const DRAWER_WIDTH = 256;
 
@@ -65,8 +78,17 @@ export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [newMenuAnchor, setNewMenuAnchor] = useState<HTMLElement | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFile, setNewFile] = useState<NewFileKind | null>(null);
+  const { user } = useAuth();
+  const visibleNav: NavItem[] = user?.isAdmin
+    ? [
+        ...navItems,
+        { to: '/admin', label: 'Quản trị', icon: <AdminPanelSettingsOutlinedIcon /> } satisfies NavItem,
+      ]
+    : navItems;
 
   const fileInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
 
   // Thư mục mới / file tải lên vào thư mục đang mở; ở các trang khác thì vào "Drive của tôi".
   const folderMatch = useMatch('/my-drive/folders/:folderId');
@@ -88,7 +110,7 @@ export function AppLayout() {
         Mới
       </Button>
       <List component="nav" aria-label="Điều hướng chính" dense>
-        {navItems.map((item) => (
+        {visibleNav.map((item) => (
           <ListItemButton
             key={item.to}
             component={NavLink}
@@ -192,6 +214,39 @@ export function AppLayout() {
           </ListItemIcon>
           Tải tệp lên
         </MenuItem>
+        <MenuItem
+          disabled={!currentFolderId || !canAddHere}
+          onClick={() => {
+            setNewMenuAnchor(null);
+            folderInput.current?.click();
+          }}
+        >
+          <ListItemIcon>
+            <DriveFolderUploadOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          Tải thư mục lên
+        </MenuItem>
+        <Divider />
+        {(
+          [
+            ['docx', <DescriptionOutlinedIcon key="i" fontSize="small" sx={{ color: '#1a73e8' }} />],
+            ['xlsx', <GridOnOutlinedIcon key="i" fontSize="small" sx={{ color: '#188038' }} />],
+            ['txt', <TextSnippetOutlinedIcon key="i" fontSize="small" />],
+            ['md', <ArticleOutlinedIcon key="i" fontSize="small" />],
+          ] as const
+        ).map(([kind, icon]) => (
+          <MenuItem
+            key={kind}
+            disabled={!currentFolderId || !canAddHere}
+            onClick={() => {
+              setNewMenuAnchor(null);
+              setNewFile(kind);
+            }}
+          >
+            <ListItemIcon>{icon}</ListItemIcon>
+            {NEW_FILE_KINDS[kind].label}
+          </MenuItem>
+        ))}
       </Menu>
 
       <input
@@ -201,12 +256,30 @@ export function AppLayout() {
         hidden
         aria-hidden
         onChange={(e) => {
-          if (e.target.files && currentFolderId) uploadStore.add(e.target.files, currentFolderId);
+          if (e.target.files && currentFolderId)
+            void uploadPlanner.upload(currentFolderId, fromFileList(e.target.files));
           e.target.value = ''; // chọn lại cùng file vẫn kích hoạt onChange
+        }}
+      />
+      {/* Chọn cả thư mục: mỗi file có webkitRelativePath ⇒ giữ nguyên cấu trúc. */}
+      <input
+        ref={folderInput}
+        type="file"
+        hidden
+        aria-hidden
+        {...{ webkitdirectory: '', directory: '' }}
+        onChange={(e) => {
+          if (e.target.files && currentFolderId)
+            void uploadPlanner.upload(currentFolderId, fromFileList(e.target.files));
+          e.target.value = '';
         }}
       />
 
       <UploadPanel />
+      <ArchivePanel />
+      <UploadConflictDialog />
+      <CreateFileDialog kind={newFile} parentId={currentFolderId} onClose={() => setNewFile(null)} />
+      <EditorHost />
 
       <NewFolderDialog
         open={newFolderOpen}

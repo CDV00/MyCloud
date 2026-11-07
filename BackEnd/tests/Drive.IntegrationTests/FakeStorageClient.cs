@@ -15,6 +15,19 @@ public sealed class FakeStorageClient : IStorageClient
 
     public string? LastPublicBaseUrl { get; private set; }
 
+    /// <summary>Yêu cầu nén đã nhận: (người yêu cầu, tên, entry).</summary>
+    public ConcurrentDictionary<Guid, (Guid UserId, string Name, IReadOnlyList<ArchiveEntry> Entries)> Archives { get; } = new();
+
+    public Task<ThumbnailLinks> GetThumbnailUrlsAsync(IReadOnlyList<Guid> blobIds, int size, string? publicBaseUrl, CancellationToken ct) =>
+        Task.FromResult(new ThumbnailLinks(blobIds.Select(b => $"{publicBaseUrl}/mycloud-blobs/t/{b:N}/{size}.webp").ToArray(), DateTimeOffset.UtcNow.AddHours(1)));
+
+    public Task<Guid> CreateArchiveAsync(Guid userId, string name, IReadOnlyList<ArchiveEntry> entries, CancellationToken ct)
+    {
+        Guid id = Guid.CreateVersion7();
+        Archives[id] = (userId, name, entries);
+        return Task.FromResult(id);
+    }
+
     /// <summary>(chủ sở hữu trả dung lượng, người upload) của từng session — kiểm tra upload vào thư mục được chia sẻ.</summary>
     public ConcurrentDictionary<Guid, (Guid OwnerId, Guid UploaderId)> SessionOwners { get; } = new();
 

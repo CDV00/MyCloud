@@ -1,8 +1,11 @@
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
+using Microsoft.AspNetCore.Authorization;
 using MyCloud.BuildingBlocks.Application.Abstractions;
 using MyCloud.BuildingBlocks.Authentication;
 using MyCloud.Contracts.Storage.V1;
+using Storage.Api.Archives;
+using Storage.Api.Thumbnails;
 using Storage.Api.Uploads;
 
 namespace Storage.Api.Grpc;
@@ -11,7 +14,12 @@ namespace Storage.Api.Grpc;
 /// gRPC cho Drive (docs/03 §4). Drive chuyển tiếp JWT của người dùng; <c>user_id</c> trong request phải trùng với
 /// người dùng của token (phòng thủ nhiều lớp) — lỗi nghiệp vụ được ServerExceptionInterceptor đổi thành status code.
 /// </summary>
-public sealed class StorageGrpcService(UploadService uploads, ICurrentUser currentUser, IHttpContextAccessor http)
+public sealed class StorageGrpcService(
+    UploadService uploads,
+    ThumbnailStore thumbnails,
+    ArchiveService archives,
+    ICurrentUser currentUser,
+    IHttpContextAccessor http)
     : StorageService.StorageServiceBase
 {
     public override async Task<CreateUploadSessionResponse> CreateUploadSession(CreateUploadSessionRequest request, ServerCallContext context)
@@ -63,9 +71,14 @@ public sealed class StorageGrpcService(UploadService uploads, ICurrentUser curre
 
     public override async Task<GetDownloadUrlResponse> GetDownloadUrl(GetDownloadUrlRequest request, ServerCallContext context)
     {
+        if (request.Internal && http.HttpContext?.User.IsService() != true)
+        {
+            throw new UnauthorizedAccessException("Only services can request internal URLs.");
+        }
+
         DownloadUrl url = await uploads.GetDownloadUrlAsync(
             Caller(request.UserId), ParseId(request.BlobId), request.FileName, Empty(request.MimeType), request.Inline,
-            Empty(request.PublicBaseUrl), context.CancellationToken);
+            Empty(request.PublicBaseUrl), context.CancellationToken, internalEndpoint: request.Internal);
 
         return new GetDownloadUrlResponse { Url = url.Url, ExpiresAt = Timestamp.FromDateTimeOffset(url.ExpiresAt) };
     }
@@ -82,6 +95,41 @@ public sealed class StorageGrpcService(UploadService uploads, ICurrentUser curre
         Guid sourceOwner = string.IsNullOrEmpty(request.SourceUserId) ? user : Caller(request.SourceUserId);
         (Guid blobId, long size) = await uploads.CopyAsync(user, sourceOwner, ParseId(request.SourceBlobId), context.CancellationToken);
         return new CopyBlobResponse { BlobId = blobId.ToString(), SizeBytes = size };
+    }
+
+    [Authorize(Policy = ServiceIdentity.Policy)]
+    public override async Task<PutThumbnailResponse> PutThumbnail(PutThumbnailRequest request, ServerCallContext context)
+    {
+        bool stored = await thumbnails.PutAsync(ParseId(request.BlobId), request.Size, request.Content.ToByteArray(), context.CancellationToken);
+        return new PutThumbnailResponse { Stored = stored };
+    }
+
+    [Authorize(Policy = ServiceIdentity.Policy)]
+    public override Task<GetThumbnailUrlsResponse> GetThumbnailUrls(GetThumbnailUrlsRequest request, ServerCallContext context)
+    {
+        if (request.BlobIds.Count > 500)
+        {
+            throw new InvalidUploadException("At most 500 thumbnails per request.");
+        }
+
+        ThumbnailUrls signed = thumbnails.Sign(request.BlobIds.Select(ParseId).ToArray(), request.Size, Empty(request.PublicBaseUrl));
+        var response = new GetThumbnailUrlsResponse { ExpiresAt = Timestamp.FromDateTimeOffset(signed.ExpiresAt) };
+        response.Urls.AddRange(signed.Urls);
+        return Task.FromResult(response);
+    }
+
+    [Authorize(Policy = ServiceIdentity.Policy)]
+    public override async Task<CreateArchiveResponse> CreateArchive(CreateArchiveRequest request, ServerCallContext context)
+    {
+        ArchiveItem[] items = request.Entries
+            .Select(e => new ArchiveItem(
+                e.Path,
+                string.IsNullOrEmpty(e.BlobId) ? null : ParseId(e.BlobId),
+                e.SizeBytes,
+                Empty(e.MimeType)))
+            .ToArray();
+        Guid archiveId = await archives.CreateAsync(Caller(request.UserId), request.Name, items, context.CancellationToken);
+        return new CreateArchiveResponse { ArchiveId = archiveId.ToString() };
     }
 
     /// <summary>

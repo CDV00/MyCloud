@@ -78,7 +78,8 @@ public static class AuthenticationExtensions
 
         services.AddAuthorizationBuilder()
             .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
-            .AddPolicy(ServiceIdentity.Policy, ServiceIdentity.BuildPolicy());
+            .AddPolicy(ServiceIdentity.Policy, ServiceIdentity.BuildPolicy())
+            .AddPolicy(AdminRole.Policy, AdminRole.BuildPolicy());
         services.TryAddSingleton(TimeProvider.System);
 
         return builder;

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using MyCloud.BuildingBlocks.Messaging;
+using Storage.Api.Archives;
 
 namespace Storage.Api.Data;
 
@@ -9,6 +10,8 @@ public sealed class StorageDbContext(DbContextOptions<StorageDbContext> options)
     public DbSet<Blob> Blobs => Set<Blob>();
 
     public DbSet<Quota> Quotas => Set<Quota>();
+
+    public DbSet<Archive> Archives => Set<Archive>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,6 +35,21 @@ public sealed class StorageDbContext(DbContextOptions<StorageDbContext> options)
             b.ToTable("quotas", t => t.HasCheckConstraint("ck_quotas_non_negative", "used_bytes >= 0 AND reserved_bytes >= 0"));
             b.HasKey(x => x.UserId);
             b.Property(x => x.UserId).ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<Archive>(b =>
+        {
+            b.ToTable("archives");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedNever();
+            b.Property(x => x.Name).HasMaxLength(260).IsRequired();
+            b.Property(x => x.ObjectKey).HasMaxLength(200).IsRequired();
+            b.Property(x => x.EntriesJson).HasColumnType("jsonb").IsRequired();
+            b.Property(x => x.S3UploadId).HasMaxLength(1024);
+            b.Property(x => x.Error).HasMaxLength(500);
+            b.Property(x => x.Status).HasConversion<short>();
+            b.HasIndex(x => new { x.Status, x.CreatedAt }); // hàng đợi + dọn dẹp
+            b.HasIndex(x => x.UserId);
         });
 
         modelBuilder.AddMessagingTables(); // inbox cho consumer (UserRegistered, FileVersionAdded)

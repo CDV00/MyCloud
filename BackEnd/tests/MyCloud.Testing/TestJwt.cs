@@ -18,9 +18,20 @@ public static class TestJwt
 
     private static readonly RsaSecurityKey OtherKey = new(RSA.Create(2048)) { KeyId = "attacker-key" };
 
-    public static string CreateToken(Guid userId, bool signWithUnknownKey = false, DateTimeOffset? expires = null)
+    public static string CreateToken(Guid userId, bool signWithUnknownKey = false, DateTimeOffset? expires = null, bool admin = false)
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
+        var claims = new Dictionary<string, object>
+        {
+            ["sub"] = userId.ToString(),
+            ["email"] = $"{userId:N}@test.local",
+            ["name"] = "Test User",
+        };
+        if (admin)
+        {
+            claims["role"] = "admin";
+        }
+
         return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Issuer = Issuer,
@@ -29,12 +40,7 @@ public static class TestJwt
             NotBefore = now.AddMinutes(-1).UtcDateTime,
             Expires = (expires ?? now.AddMinutes(15)).UtcDateTime,
             SigningCredentials = new SigningCredentials(signWithUnknownKey ? OtherKey : Key, SecurityAlgorithms.RsaSha256),
-            Claims = new Dictionary<string, object>
-            {
-                ["sub"] = userId.ToString(),
-                ["email"] = $"{userId:N}@test.local",
-                ["name"] = "Test User",
-            },
+            Claims = claims,
         });
     }
 
@@ -59,9 +65,9 @@ public static class TestJwt
         });
     }
 
-    public static HttpClient AsUser(this HttpClient client, Guid userId)
+    public static HttpClient AsUser(this HttpClient client, Guid userId, bool admin = false)
     {
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateToken(userId));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateToken(userId, admin: admin));
         return client;
     }
 }

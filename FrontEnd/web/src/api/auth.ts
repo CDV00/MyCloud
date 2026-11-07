@@ -6,6 +6,8 @@ export interface UserProfile {
   displayName: string;
   avatarUrl: string | null;
   createdAt: string;
+  /** Quản trị viên hệ thống (thấy trang Quản trị). */
+  isAdmin: boolean;
 }
 
 export async function login(email: string, password: string): Promise<void> {

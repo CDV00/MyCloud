@@ -67,6 +67,14 @@ public sealed class DriveItem : AggregateRoot<Guid>, IAuditableEntity
 
     public Guid? TrashedBy { get; private set; }
 
+    /// <summary>
+    /// Version đã có thumbnail (Media Worker, ADR-015). Chỉ có nghĩa khi bằng <see cref="CurrentVersionId"/>: nội dung
+    /// mới ⇒ thumbnail cũ không còn đúng cho tới khi Media tạo xong thumbnail của version mới.
+    /// </summary>
+    public Guid? ThumbnailVersionId { get; private set; }
+
+    public bool HasThumbnail => ThumbnailVersionId is { } version && version == CurrentVersionId;
+
     public DateTimeOffset CreatedOnUtc { get; set; }
 
     public Guid CreatedBy { get; set; }
@@ -119,13 +127,15 @@ public sealed class DriveItem : AggregateRoot<Guid>, IAuditableEntity
     }
 
     /// <summary>File mới cùng version đầu tiên (nội dung đã nằm trong blob của Storage).</summary>
-    public static DriveItem CreateFile(Guid id, DriveItem parent, ItemName name, Guid versionId, Guid blobId, long sizeBytes, string mimeType)
+    public static DriveItem CreateFile(
+        Guid id, DriveItem parent, ItemName name, Guid versionId, Guid blobId, long sizeBytes, string mimeType,
+        VersionSource source = VersionSource.Upload)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(sizeBytes);
 
         DriveItem file = NewChild(id, parent, ItemKind.File, name);
         file.RaiseDomainEvent(new ItemCreatedDomainEvent(id));
-        file.AddVersion(versionId, blobId, sizeBytes, mimeType);
+        file.AddVersion(versionId, blobId, sizeBytes, mimeType, source);
         return file;
     }
 
@@ -219,7 +229,9 @@ public sealed class DriveItem : AggregateRoot<Guid>, IAuditableEntity
     }
 
     /// <summary>Thêm nội dung mới và đặt làm version hiện tại. Số version tăng dần, không dùng lại số đã xoá.</summary>
-    public FileVersion AddVersion(Guid versionId, Guid blobId, long sizeBytes, string mimeType)
+    public FileVersion AddVersion(
+        Guid versionId, Guid blobId, long sizeBytes, string mimeType, VersionSource source = VersionSource.Upload, int? restoredFrom = null,
+        string? note = null)
     {
         if (Kind != ItemKind.File)
         {
@@ -228,7 +240,7 @@ public sealed class DriveItem : AggregateRoot<Guid>, IAuditableEntity
 
         EnsureNotTrashed();
 
-        var version = FileVersion.Create(versionId, Id, LastVersionNo + 1, blobId, sizeBytes, mimeType);
+        var version = FileVersion.Create(versionId, Id, LastVersionNo + 1, blobId, sizeBytes, mimeType, source, restoredFrom, note);
         _versions.Add(version);
         LastVersionNo = version.VersionNo;
         CurrentVersionId = versionId;

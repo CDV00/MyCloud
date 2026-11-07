@@ -90,7 +90,7 @@ public sealed class ActivityDocument
 
     public Guid ActorId { get; set; }
 
-    /// <summary>created | renamed | moved | trashed | restored | version_added.</summary>
+    /// <summary>created | renamed | moved | trashed | restored | version_added | edited | version_restored.</summary>
     public string Action { get; set; } = string.Empty;
 
     public DateTimeOffset At { get; set; }
@@ -108,6 +108,9 @@ public sealed class ActivityDocument
     public string? ToFolder { get; set; }
 
     public int? VersionNo { get; set; }
+
+    /// <summary>Phiên bản được khôi phục (action = version_restored).</summary>
+    public int? RestoredFromVersionNo { get; set; }
 }
 
 public sealed class SearchDb(IMongoDatabase database)
@@ -140,6 +143,7 @@ public sealed class SearchDb(IMongoDatabase database)
                 new CreateIndexModel<ItemDocument>(items.Ascending(x => x.OwnerId).Descending(x => x.UpdatedAt)),
                 new CreateIndexModel<ItemDocument>(items.Ascending(x => x.OwnerId).Ascending(x => x.Trashed)),
                 new CreateIndexModel<ItemDocument>(items.Ascending(x => x.AncestorIds)),
+                new CreateIndexModel<ItemDocument>(items.Ascending(x => x.OwnerId).Descending(x => x.SizeBytes)), // file lớn nhất
             ],
             cancellationToken);
 

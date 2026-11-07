@@ -18,9 +18,48 @@ export interface QuotaPayload {
   limitBytes: number;
 }
 
-export type AppNotification =
-  | { id: string; type: 'item_shared'; payload: ItemSharedPayload; createdAt: string; read: boolean }
-  | { id: string; type: 'quota'; payload: QuotaPayload; createdAt: string; read: boolean };
+export interface ArchiveReadyPayload {
+  archiveId: string;
+  name: string;
+  sizeBytes: number;
+  fileCount: number;
+  skippedCount: number;
+  expiresAt: string;
+}
+
+export interface ArchiveFailedPayload {
+  archiveId: string;
+  name: string;
+  reason: string;
+}
+
+export interface CommentPayload {
+  itemId: string;
+  itemName: string;
+  commentId: string;
+  versionId: string | null;
+  versionNo: number | null;
+  isReply: boolean;
+  mentioned: boolean;
+  authorId: string;
+  authorName: string;
+  excerpt: string;
+}
+
+interface Base {
+  id: string;
+  createdAt: string;
+  read: boolean;
+}
+
+export type AppNotification = Base &
+  (
+    | { type: 'item_shared'; payload: ItemSharedPayload }
+    | { type: 'quota'; payload: QuotaPayload }
+    | { type: 'archive_ready'; payload: ArchiveReadyPayload }
+    | { type: 'archive_failed'; payload: ArchiveFailedPayload }
+    | { type: 'comment'; payload: CommentPayload }
+  );
 
 export interface NotificationList {
   items: AppNotification[];
